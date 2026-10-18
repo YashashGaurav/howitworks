@@ -1,5 +1,7 @@
 # howitworks
 
+[![npm](https://img.shields.io/npm/v/howitworks-cli)](https://www.npmjs.com/package/howitworks-cli)
+
 **See how a codebase works, not just what files it has.**
 
 howitworks reads a repository and produces an interactive page that explains it: the main parts and how they connect, guided walkthroughs of the important paths, and a live simulator that sends a request through the code step by step. The same explanation is written to `ARCHITECTURE.md`, so engineers and AI assistants can read it too.
@@ -34,6 +36,7 @@ The preview above runs at 3× speed. [Watch the full video](docs/media/xrpld-dem
   - [Claude app (claude.ai)](#claude-app-claudeai)
   - [Command line](#command-line)
 - [Quick start](#quick-start)
+- [Skill or command line?](#skill-or-command-line)
 - [Using the skill](#using-the-skill)
 - [Using the command line](#using-the-command-line)
 - [The interactive page](#the-interactive-page)
@@ -129,15 +132,15 @@ In the Claude app, attach your repo as a `.zip` or give a Git URL. If your netwo
 ### Command line
 
 ```bash
-# Install the "howitworks" command
-npm install -g github:koppulapr2230/howitworks
-howitworks --help
+# Run it without installing
+npx howitworks-cli --help
 
-# Or run it without installing
-npx github:koppulapr2230/howitworks --help
+# Or install the "howitworks" command
+npm install -g howitworks-cli
+howitworks --help
 ```
 
-Once the package is published to npm (see [Publishing](#publishing)), this becomes `npx howitworks-cli`. The npm package is named `howitworks-cli` because `howitworks` is taken on npm; the command it installs is still `howitworks`.
+The npm package is [`howitworks-cli`](https://www.npmjs.com/package/howitworks-cli) because `howitworks` is taken on npm; the command it installs is `howitworks`. To try unreleased changes from `main`, use `npx github:koppulapr2230/howitworks` instead.
 
 ---
 
@@ -153,7 +156,7 @@ Once the package is published to npm (see [Publishing](#publishing)), this becom
 
 ```bash
 cd /path/to/your/repo
-howitworks . --open
+npx howitworks-cli . --open
 ```
 
 The tool runs Claude Code in headless mode with read-only access to the repo (it can read and search files, nothing else) and shows each file Claude opens as it goes.
@@ -162,10 +165,24 @@ The tool runs Claude Code in headless mode with read-only access to the repo (it
 
 ```bash
 git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git
-git clone --depth 1 https://github.com/koppulapr2230/howitworks.git
-npx github:koppulapr2230/howitworks render spring-petclinic \
-  --spec howitworks/skills/howitworks/examples/petclinic.architecture.json --open
+curl -O https://raw.githubusercontent.com/koppulapr2230/howitworks/main/skills/howitworks/examples/petclinic.architecture.json
+npx howitworks-cli render spring-petclinic --spec petclinic.architecture.json --open
 ```
+
+## Skill or command line?
+
+Both use the same scanner, checker and renderer. The difference is who does the thinking.
+
+- **As a skill**, Claude in your session is in charge. It follows `SKILL.md`: runs `scan` for facts about the repo, reads the code itself (as many files as it needs), writes the description and the simulator, then runs `render` and fixes any warnings. You can steer it as it works ("focus on settlement", "simulate a failed payment").
+- **As the command line tool**, the script is in charge. It scans and renders itself, and for the reading and writing it starts Claude Code in the background, read-only and limited to the repo. Nothing is interactive, so it suits CI and scripts.
+
+| | Skill | Command line |
+|---|---|---|
+| In charge | Claude, following `SKILL.md` | The script |
+| Reading the code | Claude explores freely | A read-only background Claude Code session |
+| Steering | Talk to it as it works | Command-line options |
+| Permissions | Whatever your Claude session allows | Read-only, inside the repo |
+| Best for | Understanding a repo, tailored diagrams | CI, scripts, unattended runs |
 
 ---
 
@@ -432,12 +449,12 @@ howitworks:
   script:
     - apt-get update -qq && apt-get install -yqq git > /dev/null
     - npm install -g @anthropic-ai/claude-code
-    - npx github:koppulapr2230/howitworks#v0.3.3 . -o docs/architecture
+    - npx howitworks-cli@0.3.4 . -o docs/architecture
     - git add docs/architecture
     - git diff --cached --quiet || (git -c user.name="howitworks" -c user.email="ci@example.com" commit -m "Update architecture diagram" && git push "https://oauth2:${HOWITWORKS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH)
 ```
 
-Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access. The job pins a release tag (`#v0.3.3`) so it only runs code you chose; update the tag when you upgrade.
+Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access. The job pins a version (`howitworks-cli@0.3.4`) so it only runs a release you chose; update it when you upgrade.
 
 To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, for example: *Read docs/architecture/ARCHITECTURE.md before exploring the code.*
 
