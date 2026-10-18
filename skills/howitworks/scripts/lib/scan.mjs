@@ -46,9 +46,48 @@ export function discover(root, includeTests = false) {
   return out.sort();
 }
 
-export function read(root, rel) {
-  try { return fs.readFileSync(path.join(root, rel), "utf8"); } catch { return ""; }
+// Files above this size are skipped: generated code, data dumps or a hostile repo.
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const realRoots = new Map();
+const realRoot = root => { if (!realRoots.has(root)) { let r; try { r = fs.realpathSync(root); } catch { r = path.resolve(root); } realRoots.set(root, r); } return realRoots.get(root); };
+
+/** Absolute real path of root/rel if it is a regular file inside root (after following symlinks), else null. */
+export function insideRepo(root, rel) {
+  if (typeof rel !== "string" || !rel || path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) return null;
+  const base = realRoot(root);
+  let real; try { real = fs.realpathSync(path.join(root, rel)); } catch { return null; }
+  if (real !== base && !real.startsWith(base + path.sep)) return null;
+  try { if (!fs.statSync(real).isFile()) return null; } catch { return null; }
+  return real;
 }
+
+/** Text of a file in the repo, or null if it is missing, outside the repo, or too large. */
+export function readOrNull(root, rel) {
+  const real = insideRepo(root, rel); if (!real) return null;
+  try { if (fs.statSync(real).size > MAX_FILE_BYTES) return null; return fs.readFileSync(real, "utf8"); } catch { return null; }
+}
+
+export function read(root, rel) { return readOrNull(root, rel) ?? ""; }
+
+/**
+ * Write a file under baseDir without following symlinks. A scanned repo can ship
+ * symlinks at the paths howitworks writes (.howitworks/prompt.md, architecture.html, ...)
+ * pointing at files elsewhere, so: the folder must resolve inside baseDir, and the
+ * file itself must be absent or a plain, singly linked file.
+ */
+export function safeWrite(file, data, baseDir = path.dirname(file)) {
+  const dir = path.dirname(path.resolve(file));
+  fs.mkdirSync(dir, { recursive: true });
+  const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+  const base = real(baseDir), rdir = real(dir);
+  if (rdir !== base && !rdir.startsWith(base + path.sep)) throw new Error(`refusing to write ${file}: its folder leads outside ${baseDir}`);
+  let st = null; try { st = fs.lstatSync(file); } catch {}
+  if (st && (!st.isFile() || st.nlink > 1)) throw new Error(`refusing to write ${file}: it is a ${st.isSymbolicLink() ? "symbolic link" : st.isFile() ? "hard link" : "not a regular file"}`);
+  const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+  const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | NOFOLLOW, 0o644);
+  try { fs.writeFileSync(fd, data); } finally { fs.closeSync(fd); }
+}
+
 export const countLines = t => t.split("\n").filter(l => l.trim()).length;
 
 export function isTestFile(rel) {
@@ -244,7 +283,7 @@ export class JsResolver {
     this.aliases = []; this.packages = new Map();
     if (!this.fileset.size) return;
     for (const cfg of findFiles(root, /^(tsconfig.*|jsconfig)\.json$/)) {
-      let data; try { data = JSON.parse(stripJsonComments(fs.readFileSync(path.join(root, cfg), "utf8"))); } catch { continue; }
+      let data; try { data = JSON.parse(stripJsonComments(read(root, cfg))); } catch { continue; }
       const co = (data && data.compilerOptions) || {}, cdir = dirname(cfg);
       const b = norm(path.posix.join(cdir || ".", co.baseUrl || "."));
       for (const [k, targets] of Object.entries(co.paths || {})) this.aliases.push([cdir, k.replace(/\*$/, ""), targets.map(t => norm(path.posix.join(b || ".", t.replace(/\*$/, ""))))]);
@@ -252,7 +291,7 @@ export class JsResolver {
     }
     this.aliases.sort((a, b) => b[1].length - a[1].length);
     for (const pj of findFiles(root, "package.json")) {
-      try { const d = JSON.parse(fs.readFileSync(path.join(root, pj), "utf8")); if (d && d.name) this.packages.set(d.name, dirname(pj)); } catch {}
+      try { const d = JSON.parse(read(root, pj)); if (d && d.name) this.packages.set(d.name, dirname(pj)); } catch {}
     }
   }
   probe(b) {

@@ -42,6 +42,7 @@ The preview above runs at 3× speed. [Watch the full video](docs/media/xrpld-dem
 - [The description format](#the-description-format)
 - [Keeping it up to date](#keeping-it-up-to-date)
 - [Troubleshooting](#troubleshooting)
+- [Security](#security)
 - [Limitations](#limitations)
 - [Project layout](#project-layout)
 - [Publishing](#publishing)
@@ -254,12 +255,9 @@ howitworks scan .
 
 # 3. Draw the page
 howitworks render . --spec architecture.json --open
-
-# 4. Add the live simulator
-howitworks simulate . --spec architecture.json
-#    -> .howitworks/scenario-prompt.md: paste into Claude, save the reply as scenario.json
-howitworks render . --spec architecture.json --scenario scenario.json --open
 ```
+
+For the live simulator, `.howitworks/schema.md` also describes the `scenario` format: paste it too and ask Claude to include a `scenario` key in the same JSON.
 
 ### Editing and re-rendering
 
@@ -434,12 +432,12 @@ howitworks:
   script:
     - apt-get update -qq && apt-get install -yqq git > /dev/null
     - npm install -g @anthropic-ai/claude-code
-    - npx github:koppulapr2230/howitworks . -o docs/architecture
+    - npx github:koppulapr2230/howitworks#v0.3.1 . -o docs/architecture
     - git add docs/architecture
     - git diff --cached --quiet || (git -c user.name="howitworks" -c user.email="ci@example.com" commit -m "Update architecture diagram" && git push "https://oauth2:${HOWITWORKS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH)
 ```
 
-Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access.
+Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access. The job pins a release tag (`#v0.3.1`) so it only runs code you chose; update the tag when you upgrade.
 
 To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, for example: *Read docs/architecture/ARCHITECTURE.md before exploring the code.*
 
@@ -460,6 +458,20 @@ To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, 
 | A component description is wrong | Edit `architecture.json` and run `render` again. |
 
 ---
+
+## Security
+
+howitworks is built to be pointed at repositories you don't control. What it does to keep that safe:
+
+- **Claude Code runs locked down.** The command line starts Claude Code with only the Read, Grep and Glob tools and in `dontAsk` permission mode, so it can read files inside the repo and nothing else: no shell, no edits, no network tools, and no reads outside the repo. It also ignores the repo's own Claude Code configuration (`.claude/settings.json` hooks and permission rules, `.mcp.json` servers), which would otherwise run on your machine. These flags need a recent Claude Code; run `claude update` if it rejects them.
+- **Nothing outside the repo is read.** Every file read is resolved through symlinks and must land inside the repo; file paths in a description that point elsewhere are dropped. Files over 2 MB are skipped.
+- **Nothing is written through a symlink.** Outputs refuse to overwrite a symbolic link or hard link, or to write into a folder that leads outside the output folder. The command line passes prompts to Claude Code directly instead of writing them into the repo.
+- **The page can't run injected code.** The page builds everything with plain text, and the embedded description is escaped so no text in it can end or alter the script.
+- **Repo text is treated as data.** Claude is told that file contents are material to document, not instructions.
+
+When you use the skill inside your own Claude Code session, Claude works with whatever tools and permissions that session has. Review what it proposes to run, as with any untrusted code.
+
+Report security issues privately through [GitHub security advisories](https://github.com/koppulapr2230/howitworks/security/advisories/new).
 
 ## Limitations
 

@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { buildGraph } from "./lib/scan.mjs";
+import { buildGraph, safeWrite } from "./lib/scan.mjs";
 import { analyze } from "./lib/analyze.mjs";
 import { buildMap, mapMarkdown } from "./lib/facts.mjs";
 import { buildPrompt, claudeCodeAvailable, runClaudeCode, parseSpec, validate, archMarkdown, renderHtml, SCHEMA, RULES,
@@ -69,6 +69,8 @@ function parseArgs(argv) {
 
 function fail(msg) { console.error(`howitworks: ${msg}`); process.exit(1); }
 
+const write = (file, data, base) => { try { safeWrite(file, data, base); } catch (e) { fail(e.message); } };
+
 function resolveRepo(target) {
   target ||= ".";
   if (/^(https?:\/\/|git@)/.test(target)) {
@@ -104,8 +106,8 @@ function writeOutputs(spec, root, a) {
   warns.forEach(w => console.warn(`warning: ${w}`));
   fs.mkdirSync(a.out, { recursive: true });
   const html = path.join(a.out, "architecture.html"), md = path.join(a.out, "ARCHITECTURE.md");
-  fs.writeFileSync(html, renderHtml(spec, { bare: a.bare }));
-  fs.writeFileSync(md, archMarkdown(spec));
+  write(html, renderHtml(spec, { bare: a.bare }), a.out);
+  write(md, archMarkdown(spec), a.out);
   const flows = spec.flows.length, sim = spec.scenario ? ", live call simulator" : "";
   console.log(`\n${spec.name}: ${spec.nodes.length} parts, ${flows} walkthrough${flows === 1 ? "" : "s"}${sim}.`);
   console.log(`  ${html}\n  ${md}`);
@@ -120,23 +122,17 @@ function requireClaudeCode() {
   save the reply as architecture.json, then "howitworks render --spec architecture.json".`);
 }
 
-function taskFile(root, file, text) {
-  const dir = path.join(root, ".howitworks"); fs.mkdirSync(dir, { recursive: true });
-  const f = path.join(dir, file); fs.writeFileSync(f, text); return f;
-}
-
-async function askClaude(file, root, a, what) {
+async function askClaude(task, root, a, what) {
   const t0 = Date.now();
   console.log(`\n${what}. Claude Code is reading the code; this usually takes a few minutes.`);
-  const r = await runClaudeCode(file, root, { model: a.model, log: line => console.log(line) });
+  const r = await runClaudeCode(task, root, { model: a.model, log: line => console.log(line) });
   console.log(`  done: read ${r.reads} file${r.reads === 1 ? "" : "s"} in ${Math.round((Date.now() - t0) / 1000)}s`);
   return r.text;
 }
 
 async function addScenario(spec, root, a) {
   const main = spec.flows[0] ? `"${spec.flows[0].title}"` : "the main path";
-  const f = taskFile(root, "scenario-prompt.md", buildScenarioPrompt(root, spec));
-  try { spec.scenario = parseScenario(await askClaude(f, root, a, `Writing the live simulator for ${main}`)); }
+  try { spec.scenario = parseScenario(await askClaude(buildScenarioPrompt(root, spec), root, a, `Writing the live simulator for ${main}`)); }
   catch (e) { console.warn(`warning: could not generate the simulator (${e.message}); continuing without it.`); }
 }
 
@@ -162,7 +158,7 @@ async function main() {
     validate(spec, root);
     await addScenario(spec, root, a);
     writeOutputs(spec, root, a);
-    fs.writeFileSync(a.spec, JSON.stringify(spec, null, 1));
+    write(a.spec, JSON.stringify(spec, null, 1));
     return console.log(`  ${a.spec} (updated with the simulator)`);
   }
 
@@ -170,16 +166,16 @@ async function main() {
 
   if (a.cmd === "map") {
     fs.mkdirSync(a.out, { recursive: true });
-    const f = path.join(a.out, "REPO_MAP.md"); fs.writeFileSync(f, mapMarkdown(map));
+    const f = path.join(a.out, "REPO_MAP.md"); write(f, mapMarkdown(map), a.out);
     return console.log(`  ${f}`);
   }
 
   const prompt = buildPrompt(root, map);
   if (a.cmd === "scan") {
-    const dir = path.join(a.out, ".howitworks"); fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "prompt.md"), prompt);
-    fs.writeFileSync(path.join(dir, "facts.md"), mapMarkdown(map));
-    fs.writeFileSync(path.join(dir, "schema.md"), SCHEMA + "\n\n" + RULES + "\n\n# Live simulator\n\nAdd a \"scenario\" key to the same JSON:\n\n" + SCENARIO_SCHEMA + "\n\n" + SCENARIO_RULES.replace(/\nReturn only[^\n]*$/, "") + "\n");
+    const dir = path.join(a.out, ".howitworks");
+    write(path.join(dir, "prompt.md"), prompt, a.out);
+    write(path.join(dir, "facts.md"), mapMarkdown(map), a.out);
+    write(path.join(dir, "schema.md"), SCHEMA + "\n\n" + RULES + "\n\n# Live simulator\n\nAdd a \"scenario\" key to the same JSON:\n\n" + SCENARIO_SCHEMA + "\n\n" + SCENARIO_RULES.replace(/\nReturn only[^\n]*$/, "") + "\n", a.out);
     console.log(`\nWrote ${path.join(dir, "prompt.md")} (about ${Math.round(prompt.length / 4).toLocaleString()} tokens).`);
     console.log(`To finish without Claude Code: paste it into Claude, save the JSON reply as architecture.json, then run:`);
     console.log(`  howitworks render ${a.repo || "."} --spec architecture.json --open`);
@@ -187,16 +183,15 @@ async function main() {
   }
 
   requireClaudeCode();
-  const f = taskFile(root, "prompt.md", prompt);
   let spec;
-  try { spec = parseSpec(await askClaude(f, root, a, `Describing ${name}`)); }
+  try { spec = parseSpec(await askClaude(prompt, root, a, `Describing ${name}`)); }
   catch (e) { fail(e.message); }
   spec.name = a.name || spec.name || name;
   fs.mkdirSync(a.out, { recursive: true });
   const specFile = path.join(a.out, "architecture.json");
   if (a.sim) { validate(spec, root); await addScenario(spec, root, a); }
   writeOutputs(spec, root, a);
-  fs.writeFileSync(specFile, JSON.stringify(spec, null, 1));
+  write(specFile, JSON.stringify(spec, null, 1), a.out);
   console.log(`  ${specFile}`);
 }
 

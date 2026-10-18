@@ -3,7 +3,7 @@
 // architecture description is written from.
 import fs from "node:fs";
 import path from "node:path";
-import { discover, read, countLines, ext, base, dirname, languageOf, PY_EXT, JVM_EXT, JS_EXT, CPP_EXT, CPP_SOURCE_EXT, KT_TOPLEVEL_RE, SKIP_DIRS, blankPyStrings } from "./scan.mjs";
+import { discover, read, readOrNull, countLines, ext, base, dirname, languageOf, PY_EXT, JVM_EXT, JS_EXT, CPP_EXT, CPP_SOURCE_EXT, KT_TOPLEVEL_RE, SKIP_DIRS, blankPyStrings } from "./scan.mjs";
 
 const SUPPORT_PATH_RE = /(^|[/-])(test|tests|testing|testapp|test-app|testing-support|sample|samples|example|examples|demo|build-logic|buildSrc|benchmarks?|bench|scripts?|tools|mockwebserver[\w-]*|[\w-]*-deprecated)([/-]|$)/i;
 /** Test, sample and build code. Only folders above the source root count, so a
@@ -29,8 +29,8 @@ export function cleanDoc(raw) {
   return s;
 }
 
-export function readmeBlurb(file, projectName = "") {
-  let t; try { t = fs.readFileSync(file, "utf8"); } catch { return ""; }
+export function readmeBlurb(root, rel, projectName = "") {
+  let t = readOrNull(root, rel); if (t == null) return "";
   t = t.replace(/<!--[\s\S]*?-->/g, "").replace(/```[\s\S]*?```/g, "").replace(/^[^\n]*\n[=\-]{3,}[ \t]*$/gm, "");
   const ok = [];
   for (let p of t.split(/\n\s*\n/)) {
@@ -205,7 +205,7 @@ export function fileFacts(rel, text) {
 const TEST_LIBS = /(junit|pytest|mock|jest|vitest|mocha|chai|assert|hamcrest|robolectric|espresso|testcontainers|coverage|lint|eslint|prettier|ruff|black|mypy|flake8|detekt|spotless|typescript$|@types\/|tsx$|ts-node|kover|dokka|animal-sniffer|bnd|japicmp|tox|nox|pre-commit|sphinx|mkdocs)/i;
 function dependencies(root) {
   const found = [], add = n => { n = (n || "").trim(); if (n && !TEST_LIBS.test(n) && !found.includes(n)) found.push(n); };
-  const tryRead = p => { try { return fs.readFileSync(path.join(root, p), "utf8"); } catch { return null; } };
+  const tryRead = p => readOrNull(root, p);
   const subdirs = (() => { try { return fs.readdirSync(root, { withFileTypes: true }).filter(e => e.isDirectory() && !SKIP_DIRS.has(e.name) && !e.name.startsWith(".")).map(e => e.name); } catch { return []; } })();
   for (const p of ["package.json", ...subdirs.slice(0, 20).map(d => `${d}/package.json`)]) {
     const t = tryRead(p); if (!t) continue; try { Object.keys(JSON.parse(t).dependencies || {}).forEach(add); } catch {}
@@ -243,7 +243,7 @@ export function buildMap(root, name, a, g) {
   const purpose = fs_ => {
     const dirs = new Map(); fs_.forEach(f => dirs.set(dirname(f), (dirs.get(dirname(f)) || 0) + 1));
     const main = [...dirs].sort((p, q) => q[1] - p[1])[0]?.[0] || "";
-    for (const c of ["README.md", "readme.md"]) { const b = readmeBlurb(path.join(root, main, c)); if (b) return cleanDoc(b) || b.slice(0, 180); }
+    for (const c of ["README.md", "readme.md"]) { const b = readmeBlurb(root, path.posix.join(main, c)); if (b) return cleanDoc(b) || b.slice(0, 180); }
     const pi = read(root, path.posix.join(main, "package-info.java")); if (pi) { const m = pi.match(/\/\*\*([\s\S]*?)\*\//); if (m && cleanDoc(m[1])) return cleanDoc(m[1]); }
     for (const f of fs_) if (f.endsWith("__init__.py") && facts.get(f)?.summary) return facts.get(f).summary;
     return "";
@@ -275,9 +275,9 @@ export function buildMap(root, name, a, g) {
   const anyCpp = files.some(f => CPP_SOURCE_EXT.has(ext(f)));
   const lang = f => (ext(f) === ".h" ? (anyCpp ? "c++" : "c") : languageOf(f));
   const langs = {}; files.forEach(f => (langs[lang(f)] = (langs[lang(f)] || 0) + 1));
-  const readme = ["README.md", "README.rst", "README.txt", "README", "readme.md"].map(n => path.join(root, n)).find(p => fs.existsSync(p));
+  const readme = ["README.md", "README.rst", "README.txt", "README", "readme.md"].find(n => readOrNull(root, n) != null);
   return {
-    name, about: readme ? readmeBlurb(readme, name) : "",
+    name, about: readme ? readmeBlurb(root, readme, name) : "",
     languages: Object.fromEntries(Object.entries(langs).sort((x, y) => y[1] - x[1])), dependencies: dependencies(root),
     counts: { source_files: files.length, connected_files: a.nodes.length, packages: packages.length, imports: a.edgeCount },
     entry_points: Object.fromEntries(Object.entries(entries).map(([k, v]) => [k, v.slice(0, 12)])),
