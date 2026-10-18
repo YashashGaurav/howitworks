@@ -1,0 +1,2016 @@
+{
+ "name": "xrpld",
+ "summary": "xrpld is the server software for the XRP Ledger, a peer-to-peer network that keeps a shared ledger of accounts, tokens and offers. A node connects to other peers, collects submitted transactions, agrees with its validators on the next set of transactions through consensus, applies them to the ledger, and stores the result. Clients talk to it over JSON-RPC, WebSocket or gRPC. The protocol and transaction logic live in the libxrpl library, and the server application is built on top of it.",
+ "groups": [
+  {
+   "id": "clients",
+   "label": "Callers and network",
+   "description": "Outside parties that send requests, transactions and ledger data to the node."
+  },
+  {
+   "id": "api",
+   "label": "Public API",
+   "description": "Network listeners and request dispatchers that accept client and peer traffic."
+  },
+  {
+   "id": "app",
+   "label": "Application core",
+   "description": "The Application object and the services that run the node: transaction intake, consensus, ledger management and validator trust."
+  },
+  {
+   "id": "tx",
+   "label": "Transaction engine",
+   "description": "The pipeline that checks and applies one transaction to a ledger view, in fixed order."
+  },
+  {
+   "id": "ledger",
+   "label": "Ledger and protocol",
+   "description": "Ledger data structures, views and the protocol types they are built from."
+  },
+  {
+   "id": "storage",
+   "label": "Storage and infrastructure",
+   "description": "Persistent stores, job scheduling, rate limiting and metrics."
+  }
+ ],
+ "nodes": [
+  {
+   "id": "clients",
+   "group": "clients",
+   "kind": "external",
+   "label": "API clients",
+   "description": "Wallets, apps and tools that submit transactions and query the ledger over JSON-RPC, WebSocket or gRPC.",
+   "files": []
+  },
+  {
+   "id": "peers",
+   "group": "clients",
+   "kind": "external",
+   "label": "Network peers",
+   "description": "Other xrpld nodes and validators that relay transactions, proposals, validations and ledger data.",
+   "files": []
+  },
+  {
+   "id": "main",
+   "group": "app",
+   "kind": "core",
+   "label": "Application",
+   "description": "Main parses the command line and config, then builds the Application object that owns and wires together all services. Most components keep a reference to it.",
+   "files": [
+    "src/xrpld/app/main/Main.cpp",
+    "src/xrpld/app/main/Application.h",
+    "src/xrpld/app/main/Application.cpp",
+    "src/xrpld/core/Config.h"
+   ]
+  },
+  {
+   "id": "server",
+   "group": "api",
+   "kind": "core",
+   "label": "HTTP/WS server",
+   "description": "Listens on configured ports and runs HTTP and WebSocket sessions, TLS included, handing each request to the RPC layer.",
+   "files": [
+    "include/xrpl/server/Server.h",
+    "include/xrpl/server/detail/Door.h",
+    "include/xrpl/server/Port.h",
+    "src/xrpld/rpc/ServerHandler.h"
+   ]
+  },
+  {
+   "id": "rpc",
+   "group": "api",
+   "kind": "core",
+   "label": "RPC dispatch",
+   "description": "Builds a request context, checks the caller's role and rate limits, looks up the handler by method name and runs it on the job queue.",
+   "files": [
+    "src/xrpld/rpc/detail/RPCHandler.cpp",
+    "src/xrpld/rpc/detail/Handler.cpp",
+    "src/xrpld/rpc/Context.h",
+    "src/xrpld/rpc/Role.h"
+   ]
+  },
+  {
+   "id": "handlers",
+   "group": "api",
+   "kind": "core",
+   "label": "RPC handlers",
+   "description": "One handler per RPC method, grouped by area such as account, ledger, orderbook, transaction, subscribe and admin.",
+   "files": [
+    "src/xrpld/rpc/handlers/Handlers.h",
+    "src/xrpld/rpc/handlers/transaction/Submit.cpp",
+    "src/xrpld/rpc/handlers/subscribe/Subscribe.cpp",
+    "src/xrpld/rpc/detail/RPCHelpers.h"
+   ]
+  },
+  {
+   "id": "grpc",
+   "group": "api",
+   "kind": "addon",
+   "label": "gRPC server",
+   "description": "Serves a gRPC interface next to the JSON-RPC one, when it is configured.",
+   "files": [
+    "src/xrpld/app/main/GRPCServer.h",
+    "src/xrpld/app/main/GRPCServer.cpp",
+    "src/xrpld/rpc/GRPCHandlers.h"
+   ]
+  },
+  {
+   "id": "overlay",
+   "group": "api",
+   "kind": "core",
+   "label": "Peer overlay",
+   "description": "Manages peer connections, the handshake, protocol messages and relay of transactions, proposals and validations between nodes.",
+   "files": [
+    "src/xrpld/overlay/Overlay.h",
+    "src/xrpld/overlay/detail/OverlayImpl.cpp",
+    "src/xrpld/overlay/detail/PeerImp.cpp",
+    "src/xrpld/overlay/Peer.h"
+   ]
+  },
+  {
+   "id": "peerfinder",
+   "group": "api",
+   "kind": "core",
+   "label": "Peer discovery",
+   "description": "Decides which peers to connect to, tracks slots and keeps a cache of known endpoints.",
+   "files": [
+    "include/xrpl/peerfinder/PeerfinderManager.h",
+    "src/libxrpl/peerfinder/PeerfinderManager.cpp",
+    "src/libxrpl/peerfinder/Bootcache.cpp",
+    "src/xrpld/peerfinder/PeerfinderManager.h"
+   ]
+  },
+  {
+   "id": "netops",
+   "group": "app",
+   "kind": "core",
+   "label": "Network operations",
+   "description": "The hub that accepts submitted and relayed transactions, tracks the node's operating mode, drives consensus rounds and publishes subscription events.",
+   "files": [
+    "include/xrpl/server/NetworkOPs.h",
+    "src/xrpld/app/misc/NetworkOPs.cpp",
+    "src/xrpld/app/misc/make_NetworkOPs.h"
+   ]
+  },
+  {
+   "id": "txq",
+   "group": "app",
+   "kind": "store",
+   "label": "Transaction queue",
+   "description": "Holds transactions that do not fit in the open ledger at the current fee level and applies fee escalation.",
+   "files": [
+    "src/xrpld/app/misc/TxQ.h",
+    "src/xrpld/app/misc/detail/TxQ.cpp",
+    "src/xrpld/app/misc/FeeEscalation.md"
+   ]
+  },
+  {
+   "id": "consensus",
+   "group": "app",
+   "kind": "core",
+   "label": "Consensus",
+   "description": "A generic consensus algorithm in libxrpl plus the RCL adaptor in xrpld. Validators exchange proposals, resolve disputed transactions and agree on the next ledger.",
+   "files": [
+    "include/xrpl/consensus/Consensus.h",
+    "src/libxrpl/consensus/Consensus.cpp",
+    "src/xrpld/app/consensus/RCLConsensus.h",
+    "src/xrpld/app/consensus/RCLConsensus.cpp"
+   ]
+  },
+  {
+   "id": "validators",
+   "group": "app",
+   "kind": "core",
+   "label": "Validator trust",
+   "description": "Keeps the trusted validator list from config and published lists, verifies manifests and collects validations from trusted validators.",
+   "files": [
+    "src/xrpld/app/misc/ValidatorList.h",
+    "src/xrpld/app/misc/detail/ValidatorList.cpp",
+    "include/xrpl/server/Manifest.h",
+    "src/xrpld/app/consensus/RCLValidations.h"
+   ]
+  },
+  {
+   "id": "ledgermaster",
+   "group": "app",
+   "kind": "core",
+   "label": "Ledger master",
+   "description": "Tracks the open, closed and validated ledgers, advances the validated ledger and keeps ledger history.",
+   "files": [
+    "src/xrpld/app/ledger/LedgerMaster.h",
+    "src/xrpld/app/ledger/detail/LedgerMaster.cpp",
+    "src/xrpld/app/ledger/OpenLedger.h",
+    "src/xrpld/app/ledger/detail/BuildLedger.cpp"
+   ]
+  },
+  {
+   "id": "inbound",
+   "group": "app",
+   "kind": "core",
+   "label": "Ledger acquisition",
+   "description": "Fetches missing ledgers and transaction sets from peers, and replays ledgers by delta, so the node can catch up with the network.",
+   "files": [
+    "src/xrpld/app/ledger/InboundLedger.h",
+    "src/xrpld/app/ledger/detail/InboundLedgers.cpp",
+    "src/xrpld/app/ledger/detail/TransactionAcquire.h",
+    "src/xrpld/app/ledger/LedgerReplayer.h"
+   ]
+  },
+  {
+   "id": "amendments",
+   "group": "app",
+   "kind": "core",
+   "label": "Amendments",
+   "description": "Tracks which protocol amendments are enabled and votes on pending ones. Transaction behavior changes are gated behind them.",
+   "files": [
+    "include/xrpl/ledger/AmendmentTable.h",
+    "src/xrpld/app/misc/detail/AmendmentTable.cpp",
+    "include/xrpl/protocol/Feature.h",
+    "include/xrpl/protocol/detail/features.macro"
+   ]
+  },
+  {
+   "id": "apply",
+   "group": "tx",
+   "kind": "step",
+   "label": "Apply entry",
+   "description": "The entry points that take a signed transaction and a view and run the transaction pipeline, returning a result code and whether it was applied.",
+   "files": [
+    "include/xrpl/tx/apply.h",
+    "src/libxrpl/tx/apply.cpp",
+    "include/xrpl/tx/applySteps.h",
+    "src/libxrpl/tx/applySteps.cpp"
+   ]
+  },
+  {
+   "id": "preflight",
+   "group": "tx",
+   "kind": "step",
+   "label": "Preflight",
+   "description": "Checks the transaction on its own: format, flags, fields and signatures. It needs no ledger state, so its result can be cached.",
+   "files": [
+    "include/xrpl/tx/Transactor.h",
+    "src/libxrpl/tx/Transactor.cpp"
+   ]
+  },
+  {
+   "id": "preclaim",
+   "group": "tx",
+   "kind": "step",
+   "label": "Preclaim",
+   "description": "Reads the current ledger to check the account, sequence number, fee and type-specific conditions without changing anything.",
+   "files": [
+    "include/xrpl/tx/Transactor.h",
+    "src/libxrpl/tx/Transactor.cpp",
+    "include/xrpl/tx/ApplyContext.h"
+   ]
+  },
+  {
+   "id": "doapply",
+   "group": "tx",
+   "kind": "step",
+   "label": "Do apply",
+   "description": "Charges the fee, then runs the transactor's own doApply to change ledger entries inside an ApplyView.",
+   "files": [
+    "src/libxrpl/tx/Transactor.cpp",
+    "src/libxrpl/tx/ApplyContext.cpp",
+    "include/xrpl/ledger/ApplyViewImpl.h"
+   ]
+  },
+  {
+   "id": "invariants",
+   "group": "tx",
+   "kind": "step",
+   "label": "Invariant checks",
+   "description": "After a transaction runs, checks rules such as no XRP created and valid ledger entries. A violation turns the result into a failure.",
+   "files": [
+    "include/xrpl/tx/invariants/InvariantCheck.h",
+    "include/xrpl/tx/invariants/InvariantRunner.h",
+    "src/libxrpl/tx/invariants/InvariantRunner.cpp",
+    "src/libxrpl/tx/invariants/InvariantCheck.cpp"
+   ]
+  },
+  {
+   "id": "transactors",
+   "group": "tx",
+   "kind": "core",
+   "label": "Transactors",
+   "description": "One class per transaction type, such as Payment, OfferCreate or EscrowCreate, grouped by feature area. Each derives from Transactor and overrides the pipeline steps.",
+   "files": [
+    "include/xrpl/tx/transactors/account/AccountSet.h",
+    "src/libxrpl/tx/transactors/account/AccountSet.cpp",
+    "include/xrpl/tx/transactors/dex/OfferCreate.h",
+    "include/xrpl/tx/transactors/escrow/EscrowCreate.h"
+   ]
+  },
+  {
+   "id": "paths",
+   "group": "tx",
+   "kind": "core",
+   "label": "Payment paths",
+   "description": "The payment engine that finds and executes paths through trust lines, order books and AMMs, in steps with quality tracking.",
+   "files": [
+    "include/xrpl/tx/paths/Flow.h",
+    "src/libxrpl/tx/paths/Flow.cpp",
+    "include/xrpl/tx/paths/detail/Steps.h",
+    "include/xrpl/tx/paths/RippleCalc.h"
+   ]
+  },
+  {
+   "id": "views",
+   "group": "ledger",
+   "kind": "core",
+   "label": "Ledger views",
+   "description": "Layered read and write views over a ledger: ReadView, OpenView, ApplyView and Sandbox. Changes made to a view are only committed when they succeed.",
+   "files": [
+    "include/xrpl/ledger/ReadView.h",
+    "include/xrpl/ledger/ApplyView.h",
+    "include/xrpl/ledger/OpenView.h",
+    "include/xrpl/ledger/Sandbox.h"
+   ]
+  },
+  {
+   "id": "ledger",
+   "group": "ledger",
+   "kind": "core",
+   "label": "Ledger",
+   "description": "A ledger is a header plus a state tree and a transaction tree. It can be open, closed or validated.",
+   "files": [
+    "include/xrpl/ledger/Ledger.h",
+    "src/libxrpl/ledger/Ledger.cpp",
+    "include/xrpl/protocol/LedgerHeader.h"
+   ]
+  },
+  {
+   "id": "helpers",
+   "group": "ledger",
+   "kind": "core",
+   "label": "Ledger helpers",
+   "description": "Shared functions that transactors and invariants use to read and edit common ledger objects such as accounts, directories, trust lines and tokens.",
+   "files": [
+    "include/xrpl/ledger/helpers/AccountRootHelpers.h",
+    "include/xrpl/ledger/helpers/DirectoryHelpers.h",
+    "include/xrpl/ledger/helpers/TokenHelpers.h",
+    "include/xrpl/ledger/View.h"
+   ]
+  },
+  {
+   "id": "protocol",
+   "group": "ledger",
+   "kind": "core",
+   "label": "Protocol types",
+   "description": "Serialized object types, fields, amounts, keys, signing, error codes and the tables of transaction and ledger entry formats.",
+   "files": [
+    "include/xrpl/protocol/STTx.h",
+    "include/xrpl/protocol/SField.h",
+    "include/xrpl/protocol/TER.h",
+    "include/xrpl/protocol/detail/transactions.macro"
+   ]
+  },
+  {
+   "id": "codegen",
+   "group": "ledger",
+   "kind": "addon",
+   "label": "Protocol codegen",
+   "description": "Python scripts that read the transaction and ledger entry macro files and generate typed wrapper classes in protocol_autogen.",
+   "files": [
+    "cmake/scripts/codegen/generate_tx_classes.py",
+    "cmake/scripts/codegen/generate_ledger_classes.py",
+    "include/xrpl/protocol/detail/ledger_entries.macro",
+    "include/xrpl/protocol_autogen/TransactionBase.h"
+   ]
+  },
+  {
+   "id": "shamap",
+   "group": "storage",
+   "kind": "store",
+   "label": "SHAMap",
+   "description": "A Merkle tree that holds ledger state and transactions, with hashing, diffing and sync support. Nodes are read from and written to the node store.",
+   "files": [
+    "include/xrpl/shamap/SHAMap.h",
+    "src/libxrpl/shamap/SHAMap.cpp",
+    "src/libxrpl/shamap/SHAMapSync.cpp",
+    "src/xrpld/shamap/NodeFamily.h"
+   ]
+  },
+  {
+   "id": "nodestore",
+   "group": "storage",
+   "kind": "store",
+   "label": "Node store",
+   "description": "Key-value storage for ledger tree nodes, with pluggable backends such as NuDB, RocksDB and memory.",
+   "files": [
+    "include/xrpl/nodestore/Database.h",
+    "include/xrpl/nodestore/Backend.h",
+    "src/libxrpl/nodestore/backend/NuDBFactory.cpp",
+    "src/libxrpl/nodestore/DatabaseNodeImp.cpp"
+   ]
+  },
+  {
+   "id": "shamapstore",
+   "group": "storage",
+   "kind": "core",
+   "label": "History rotation",
+   "description": "Runs online deletion by rotating node store databases so old ledger history is dropped without stopping the node.",
+   "files": [
+    "src/xrpld/app/misc/SHAMapStore.h",
+    "src/xrpld/app/misc/SHAMapStoreImp.cpp",
+    "include/xrpl/nodestore/DatabaseRotating.h"
+   ]
+  },
+  {
+   "id": "reldb",
+   "group": "storage",
+   "kind": "store",
+   "label": "SQL databases",
+   "description": "SQLite databases accessed through SOCI that hold ledger and transaction indexes for lookups, plus wallet and peer data.",
+   "files": [
+    "include/xrpl/rdb/DatabaseCon.h",
+    "include/xrpl/rdb/RelationalDatabase.h",
+    "src/xrpld/app/rdb/backend/SQLiteDatabase.h",
+    "src/libxrpl/rdb/DatabaseCon.cpp"
+   ]
+  },
+  {
+   "id": "jobqueue",
+   "group": "storage",
+   "kind": "store",
+   "label": "Job queue",
+   "description": "A prioritized thread pool. RPC calls, consensus work and ledger tasks are queued here as typed jobs.",
+   "files": [
+    "include/xrpl/core/JobQueue.h",
+    "src/libxrpl/core/detail/JobQueue.cpp",
+    "include/xrpl/core/Job.h",
+    "include/xrpl/core/ServiceRegistry.h"
+   ]
+  },
+  {
+   "id": "hashrouter",
+   "group": "storage",
+   "kind": "store",
+   "label": "Hash router",
+   "description": "Remembers recently seen transactions and messages so they are not processed or relayed twice, and holds flags from earlier checks.",
+   "files": [
+    "include/xrpl/core/HashRouter.h",
+    "src/libxrpl/core/HashRouter.cpp",
+    "src/xrpld/app/misc/detail/setup_HashRouter.cpp"
+   ]
+  },
+  {
+   "id": "resource",
+   "group": "storage",
+   "kind": "core",
+   "label": "Resource limits",
+   "description": "Charges peers and clients for expensive requests and blocks or disconnects abusive ones.",
+   "files": [
+    "include/xrpl/resource/ResourceManager.h",
+    "include/xrpl/resource/Consumer.h",
+    "src/libxrpl/resource/ResourceManager.cpp",
+    "include/xrpl/resource/Fees.h"
+   ]
+  },
+  {
+   "id": "metrics",
+   "group": "storage",
+   "kind": "addon",
+   "label": "Metrics and logs",
+   "description": "Insight metrics sent to StatsD, the performance log and the Journal logging interface.",
+   "files": [
+    "include/xrpl/beast/insight/Collector.h",
+    "src/xrpld/app/main/CollectorManager.h",
+    "include/xrpl/core/PerfLog.h",
+    "include/xrpl/beast/utility/Journal.h"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "clients",
+   "to": "server",
+   "label": "HTTP, WebSocket"
+  },
+  {
+   "from": "clients",
+   "to": "grpc"
+  },
+  {
+   "from": "peers",
+   "to": "overlay"
+  },
+  {
+   "from": "main",
+   "to": "server",
+   "label": "creates"
+  },
+  {
+   "from": "main",
+   "to": "netops",
+   "label": "creates"
+  },
+  {
+   "from": "main",
+   "to": "overlay",
+   "label": "creates"
+  },
+  {
+   "from": "main",
+   "to": "jobqueue"
+  },
+  {
+   "from": "main",
+   "to": "nodestore"
+  },
+  {
+   "from": "main",
+   "to": "reldb"
+  },
+  {
+   "from": "main",
+   "to": "metrics"
+  },
+  {
+   "from": "server",
+   "to": "rpc"
+  },
+  {
+   "from": "grpc",
+   "to": "rpc"
+  },
+  {
+   "from": "rpc",
+   "to": "handlers",
+   "label": "dispatches"
+  },
+  {
+   "from": "rpc",
+   "to": "jobqueue",
+   "label": "runs on"
+  },
+  {
+   "from": "rpc",
+   "to": "resource"
+  },
+  {
+   "from": "handlers",
+   "to": "netops",
+   "label": "submit"
+  },
+  {
+   "from": "handlers",
+   "to": "ledgermaster",
+   "label": "read ledgers"
+  },
+  {
+   "from": "handlers",
+   "to": "reldb",
+   "label": "history queries"
+  },
+  {
+   "from": "handlers",
+   "to": "paths"
+  },
+  {
+   "from": "overlay",
+   "to": "peerfinder"
+  },
+  {
+   "from": "overlay",
+   "to": "netops",
+   "label": "relays to"
+  },
+  {
+   "from": "overlay",
+   "to": "inbound",
+   "label": "serves data"
+  },
+  {
+   "from": "overlay",
+   "to": "resource"
+  },
+  {
+   "from": "overlay",
+   "to": "hashrouter"
+  },
+  {
+   "from": "netops",
+   "to": "txq"
+  },
+  {
+   "from": "netops",
+   "to": "apply"
+  },
+  {
+   "from": "netops",
+   "to": "consensus"
+  },
+  {
+   "from": "netops",
+   "to": "ledgermaster"
+  },
+  {
+   "from": "netops",
+   "to": "hashrouter"
+  },
+  {
+   "from": "txq",
+   "to": "apply"
+  },
+  {
+   "from": "consensus",
+   "to": "validators"
+  },
+  {
+   "from": "consensus",
+   "to": "ledgermaster",
+   "label": "builds ledger"
+  },
+  {
+   "from": "consensus",
+   "to": "inbound",
+   "label": "fetch tx sets"
+  },
+  {
+   "from": "consensus",
+   "to": "overlay",
+   "label": "broadcast"
+  },
+  {
+   "from": "ledgermaster",
+   "to": "inbound"
+  },
+  {
+   "from": "ledgermaster",
+   "to": "ledger"
+  },
+  {
+   "from": "ledgermaster",
+   "to": "apply",
+   "label": "applies tx set"
+  },
+  {
+   "from": "ledgermaster",
+   "to": "reldb",
+   "label": "saves index"
+  },
+  {
+   "from": "ledgermaster",
+   "to": "shamapstore"
+  },
+  {
+   "from": "inbound",
+   "to": "shamap"
+  },
+  {
+   "from": "inbound",
+   "to": "overlay",
+   "label": "requests"
+  },
+  {
+   "from": "amendments",
+   "to": "validators"
+  },
+  {
+   "from": "apply",
+   "to": "preflight"
+  },
+  {
+   "from": "preflight",
+   "to": "preclaim"
+  },
+  {
+   "from": "preclaim",
+   "to": "doapply"
+  },
+  {
+   "from": "doapply",
+   "to": "invariants"
+  },
+  {
+   "from": "preflight",
+   "to": "transactors",
+   "label": "calls overrides"
+  },
+  {
+   "from": "preclaim",
+   "to": "transactors"
+  },
+  {
+   "from": "doapply",
+   "to": "transactors"
+  },
+  {
+   "from": "transactors",
+   "to": "paths"
+  },
+  {
+   "from": "transactors",
+   "to": "helpers"
+  },
+  {
+   "from": "transactors",
+   "to": "views"
+  },
+  {
+   "from": "transactors",
+   "to": "amendments",
+   "label": "feature gates"
+  },
+  {
+   "from": "invariants",
+   "to": "helpers"
+  },
+  {
+   "from": "paths",
+   "to": "views"
+  },
+  {
+   "from": "views",
+   "to": "ledger"
+  },
+  {
+   "from": "ledger",
+   "to": "shamap"
+  },
+  {
+   "from": "helpers",
+   "to": "views"
+  },
+  {
+   "from": "views",
+   "to": "protocol"
+  },
+  {
+   "from": "codegen",
+   "to": "protocol",
+   "label": "generates from"
+  },
+  {
+   "from": "shamap",
+   "to": "nodestore"
+  },
+  {
+   "from": "shamapstore",
+   "to": "nodestore",
+   "label": "rotates"
+  },
+  {
+   "from": "jobqueue",
+   "to": "metrics"
+  }
+ ],
+ "flows": [
+  {
+   "id": "submit-transaction",
+   "title": "Submit a transaction over RPC",
+   "steps": [
+    {
+     "node": "clients",
+     "text": "A client sends a signed transaction with the submit method over HTTP or WebSocket."
+    },
+    {
+     "node": "server",
+     "text": "The listener reads the request on its port and passes it to the server handler."
+    },
+    {
+     "node": "rpc",
+     "text": "The dispatcher builds a context, checks role and resource charges, and finds the handler by method name."
+    },
+    {
+     "node": "handlers",
+     "text": "The submit handler parses and checks the transaction, then passes it to network operations."
+    },
+    {
+     "node": "netops",
+     "text": "Network operations checks the hash router for duplicates, then queues the transaction for processing."
+    },
+    {
+     "node": "apply",
+     "text": "The transaction is run against the open ledger through the apply entry points."
+    },
+    {
+     "node": "preflight",
+     "text": "Preflight checks the transaction's format, fields and signatures."
+    },
+    {
+     "node": "preclaim",
+     "text": "Preclaim checks the account, sequence and fee against current ledger state."
+    },
+    {
+     "node": "doapply",
+     "text": "The fee is charged and the transactor changes ledger entries in a view."
+    },
+    {
+     "node": "invariants",
+     "text": "Invariant checks confirm the changes are legal before they are kept."
+    },
+    {
+     "node": "txq",
+     "text": "If the open ledger cannot take it at the current fee level, the transaction waits in the queue."
+    },
+    {
+     "node": "overlay",
+     "text": "A transaction that is accepted is relayed to peers."
+    }
+   ]
+  },
+  {
+   "id": "ledger-close",
+   "title": "Agree on and apply the next ledger",
+   "steps": [
+    {
+     "node": "netops",
+     "text": "Network operations starts a consensus round when the ledger is ready to close."
+    },
+    {
+     "node": "consensus",
+     "text": "The consensus engine proposes the node's candidate transaction set and exchanges positions with trusted validators."
+    },
+    {
+     "node": "validators",
+     "text": "Only proposals and validations from trusted validators count toward agreement."
+    },
+    {
+     "node": "inbound",
+     "text": "If peers propose a transaction set the node lacks, it is fetched from them."
+    },
+    {
+     "node": "ledgermaster",
+     "text": "Once agreed, the ledger master builds the new ledger by applying the set to the previous closed ledger."
+    },
+    {
+     "node": "apply",
+     "text": "Each transaction in the canonical order goes through the transaction pipeline."
+    },
+    {
+     "node": "shamap",
+     "text": "The state and transaction trees are updated and hashed to produce the new ledger hashes."
+    },
+    {
+     "node": "nodestore",
+     "text": "The new tree nodes are written to the node store."
+    },
+    {
+     "node": "reldb",
+     "text": "Ledger and transaction indexes are saved to the SQL database for later queries."
+    }
+   ]
+  },
+  {
+   "id": "startup",
+   "title": "Start the server and catch up",
+   "steps": [
+    {
+     "node": "main",
+     "text": "Main reads the command line and config file, then constructs the Application and starts its services."
+    },
+    {
+     "node": "nodestore",
+     "text": "The node store and SQL databases are opened, and the latest stored ledger is loaded."
+    },
+    {
+     "node": "jobqueue",
+     "text": "The job queue starts its worker threads."
+    },
+    {
+     "node": "server",
+     "text": "RPC and WebSocket ports begin listening."
+    },
+    {
+     "node": "peerfinder",
+     "text": "Peer discovery picks addresses from config, the boot cache and other sources."
+    },
+    {
+     "node": "overlay",
+     "text": "The overlay connects to peers and runs the handshake with each."
+    },
+    {
+     "node": "inbound",
+     "text": "The node requests the ledgers it is missing from its peers."
+    },
+    {
+     "node": "ledgermaster",
+     "text": "When a recent validated ledger is in hand, the node joins normal operation."
+    }
+   ]
+  },
+  {
+   "id": "peer-transaction",
+   "title": "Receive a transaction from a peer",
+   "steps": [
+    {
+     "node": "peers",
+     "text": "A peer sends a transaction message."
+    },
+    {
+     "node": "overlay",
+     "text": "The peer connection decodes the message and charges the peer for the work."
+    },
+    {
+     "node": "hashrouter",
+     "text": "The hash router drops transactions the node has already seen."
+    },
+    {
+     "node": "netops",
+     "text": "Network operations submits the transaction for checking and application."
+    },
+    {
+     "node": "apply",
+     "text": "The transaction runs through preflight, preclaim and apply against the open ledger."
+    },
+    {
+     "node": "overlay",
+     "text": "If it is accepted, it is relayed on to other peers."
+    }
+   ]
+  }
+ ],
+ "changes": [
+  {
+   "task": "Add a new transaction type",
+   "nodes": [
+    "protocol",
+    "transactors",
+    "codegen",
+    "amendments",
+    "helpers"
+   ]
+  },
+  {
+   "task": "Change the behavior of an existing transaction",
+   "nodes": [
+    "transactors",
+    "amendments",
+    "helpers",
+    "invariants"
+   ]
+  },
+  {
+   "task": "Add an RPC method",
+   "nodes": [
+    "handlers",
+    "rpc",
+    "protocol"
+   ]
+  },
+  {
+   "task": "Add or change an invariant check",
+   "nodes": [
+    "invariants",
+    "helpers"
+   ]
+  },
+  {
+   "task": "Tune fee escalation or queue limits",
+   "nodes": [
+    "txq",
+    "netops"
+   ]
+  },
+  {
+   "task": "Change consensus or validation behavior",
+   "nodes": [
+    "consensus",
+    "validators",
+    "ledgermaster"
+   ]
+  },
+  {
+   "task": "Add a node store backend or change storage",
+   "nodes": [
+    "nodestore",
+    "shamapstore",
+    "shamap"
+   ]
+  },
+  {
+   "task": "Change peer messaging or connection rules",
+   "nodes": [
+    "overlay",
+    "peerfinder",
+    "resource"
+   ]
+  }
+ ],
+ "scenario": {
+  "title": "Submit a signed transaction over JSON-RPC",
+  "eventsLabel": "Code path (simulated timing)",
+  "input": {
+   "label": "JSON-RPC request body",
+   "value": "{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"12000022800000002400000001614000000000000064684000000000000000A732103AB40...\"}]}",
+   "pattern": "\"method\"\\s*:\\s*\"(?<method>\\w+)\""
+  },
+  "options": [
+   {
+    "id": "caller",
+    "label": "Caller",
+    "choices": [
+     {
+      "value": "normal",
+      "label": "Public client"
+     },
+     {
+      "value": "admin",
+      "label": "Admin client"
+     },
+     {
+      "value": "flooding",
+      "label": "Abusive client"
+     }
+    ]
+   },
+   {
+    "id": "blob",
+    "label": "Transaction blob",
+    "choices": [
+     {
+      "value": "valid",
+      "label": "Valid and signed"
+     },
+     {
+      "value": "garbled",
+      "label": "Truncated blob"
+     },
+     {
+      "value": "badsig",
+      "label": "Bad signature"
+     }
+    ]
+   },
+   {
+    "id": "outcome",
+    "label": "Ledger outcome",
+    "enabledWhen": {
+     "blob": "valid"
+    },
+    "choices": [
+     {
+      "value": "applied",
+      "label": "Fee is enough, applied"
+     },
+     {
+      "value": "queued",
+      "label": "Fee too low, queued"
+     },
+     {
+      "value": "pastseq",
+      "label": "Sequence already used"
+     }
+    ]
+   },
+   {
+    "id": "fail_hard",
+    "label": "fail_hard",
+    "enabledWhen": {
+     "outcome": "pastseq"
+    },
+    "choices": [
+     {
+      "value": "no",
+      "label": "Not set"
+     },
+     {
+      "value": "yes",
+      "label": "Set to true"
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "node": "clients",
+    "text": "A client POSTs a JSON-RPC request with method {method}. The params hold a hex tx_blob, the serialized signed transaction.",
+    "dir": "down",
+    "ms": 0,
+    "show": "POST / HTTP/1.1\nContent-Type: application/json\n\n{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"1200002280000000...\"}]}"
+   },
+   {
+    "node": "server",
+    "text": "The port's Door accepted the connection and an HTTP session was created. ServerHandler::onRequest checks that the port serves HTTP and that any user and password are right, then detaches the session.",
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "Door::doAccept()",
+     "PlainHTTPPeer::run()",
+     "ServerHandler::onRequest(session)"
+    ]
+   },
+   {
+    "node": "jobqueue",
+    "text": "The session is posted to the job queue as a client RPC coroutine, so a worker thread does the rest of the work.",
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "JobQueue::postCoro(JtClientRpc, \"RPC-Client\")",
+     "ServerHandler::processSession(session, coro)"
+    ]
+   },
+   {
+    "node": "server",
+    "text": "processRequest parses the body as JSON, reads the method name and works out the caller's role for this port and address.",
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "ServerHandler::processRequest(port, body, remoteIP)",
+     "json::Reader::parse(body)",
+     "rpc::roleRequired(apiVersion, beta, \"submit\")",
+     "requestRole(Role::GUEST, port, params, remoteIP, user)"
+    ],
+    "show": "method = \"submit\"\nrequired role = GUEST (submit is not an admin method)"
+   },
+   {
+    "node": "resource",
+    "text": "The remote address gets a resource consumer. The abusive client has already used up its allowance, so the consumer says to disconnect it.",
+    "when": {
+     "caller": "flooding"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "resource::Manager::newInboundEndpoint(remoteIP, false, forwardedFor)",
+     "Consumer::disconnect(journal)"
+    ],
+    "show": "consumer.disconnect() == true"
+   },
+   {
+    "node": "server",
+    "text": "The request is refused before any handler runs. The server replies with HTTP 503 and the session ends.",
+    "when": {
+     "caller": "flooding"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "httpReply(503, \"Server is overloaded\", output)"
+    ],
+    "show": "HTTP/1.1 503 Service Unavailable\n\nServer is overloaded"
+   },
+   {
+    "node": "clients",
+    "text": "The client gets the 503 and its transaction never reaches the ledger code.",
+    "when": {
+     "caller": "flooding"
+    },
+    "dir": "fail",
+    "ms": 0
+   },
+   {
+    "node": "resource",
+    "text": "The remote address gets a metered consumer from the resource manager. It is under its limit, so the request goes on.",
+    "when": {
+     "caller": "normal"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "resource::Manager::newInboundEndpoint(remoteIP, false, forwardedFor)",
+     "Consumer::disconnect(journal)"
+    ],
+    "show": "role = GUEST\nconsumer.disconnect() == false"
+   },
+   {
+    "node": "resource",
+    "text": "The caller's address is on the port's admin list, so the role is ADMIN. Admin callers get an unlimited endpoint that is never charged into a disconnect.",
+    "when": {
+     "caller": "admin"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "isAdmin(port, params, remoteIP)",
+     "resource::Manager::newUnlimitedEndpoint(remoteIP)"
+    ],
+    "show": "role = ADMIN\nunlimited consumer"
+   },
+   {
+    "node": "rpc",
+    "text": "The JsonContext is built and rpc::doCommand runs. fillHandler first counts queued client jobs and would refuse with tooBusy past the limit. It then finds the handler for {method} and checks role and conditions.",
+    "when": {
+     "caller": "normal"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "rpc::doCommand(context, result)",
+     "fillHandler(context, handler)",
+     "JobQueue::getJobCountGE(JtClient)",
+     "getHandler(apiVersion, betaRpcApi, \"submit\")",
+     "conditionMet(handler->condition, context)",
+     "callMethod(context, method, \"submit\", result)"
+    ],
+    "show": "context.params = { tx_blob: \"1200002280...\", command: \"submit\" }"
+   },
+   {
+    "node": "rpc",
+    "text": "The JsonContext is built and rpc::doCommand runs. Because the role is unlimited, fillHandler skips the busy-server job count check. It finds the handler for {method} and checks conditions.",
+    "when": {
+     "caller": "admin"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "rpc::doCommand(context, result)",
+     "fillHandler(context, handler)",
+     "isUnlimited(context.role)",
+     "getHandler(apiVersion, betaRpcApi, \"submit\")",
+     "callMethod(context, method, \"submit\", result)"
+    ],
+    "show": "context.params = { tx_blob: \"1200002280...\", command: \"submit\" }\ncontext.role = ADMIN"
+   },
+   {
+    "node": "handlers",
+    "text": "doSubmit sets the request's load charge to medium burden and decodes the hex blob. The blob is cut short, so building the STTx throws while reading the serialized fields.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "garbled"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "doSubmit(context)",
+     "strUnHex(tx_blob)",
+     "SerialIter(makeSlice(blob))",
+     "STTx::STTx(SerialIter&) throws"
+    ],
+    "show": "{ \"error\": \"invalidTransaction\",\n  \"error_exception\": \"<serializer error text>\" }"
+   },
+   {
+    "node": "rpc",
+    "text": "The error result passes back up through callMethod unchanged.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "garbled"
+    },
+    "dir": "fail",
+    "ms": 0,
+    "quiet": true
+   },
+   {
+    "node": "server",
+    "text": "processRequest adds status \"error\" and echoes the request with secrets masked. The reply is still an HTTP 200 with the error in the JSON.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "garbled"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "Consumer::charge(loadType)",
+     "httpReply(200, response, output)"
+    ],
+    "show": "{\"result\":{\"error\":\"invalidTransaction\",\"error_exception\":\"...\",\"status\":\"error\",\"request\":{\"tx_blob\":\"1200002280...\",\"command\":\"submit\"}}}"
+   },
+   {
+    "node": "clients",
+    "text": "The client sees invalidTransaction. Nothing was queued or relayed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "garbled"
+    },
+    "dir": "fail",
+    "ms": 0
+   },
+   {
+    "node": "handlers",
+    "text": "doSubmit sets the request's load charge to medium burden, decodes the hex blob and builds the STTx from it.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": [
+      "valid",
+      "badsig"
+     ]
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "doSubmit(context)",
+     "strUnHex(tx_blob)",
+     "SerialIter(makeSlice(blob))",
+     "std::make_shared<STTx const>(sitTrans)"
+    ],
+    "show": "STTx { TransactionType: Payment, Account: rExample..., Sequence: 1, Fee: 10 }"
+   },
+   {
+    "node": "hashrouter",
+    "text": "checkValidity verifies the signature against the current open ledger's rules and remembers the verdict in the hash router under the transaction ID. The signature checks out.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid"
+    },
+    "dir": "down",
+    "ms": 2,
+    "events": [
+     "checkValidity(getHashRouter(), *stTx, rules)"
+    ],
+    "show": "validity = Validity::Valid"
+   },
+   {
+    "node": "hashrouter",
+    "text": "checkValidity verifies the signature against the current open ledger's rules and remembers the verdict in the hash router. The signature does not match, so the result is not Valid.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "badsig"
+    },
+    "dir": "fail",
+    "ms": 2,
+    "events": [
+     "checkValidity(getHashRouter(), *stTx, rules)"
+    ],
+    "show": "validity != Validity::Valid"
+   },
+   {
+    "node": "handlers",
+    "text": "doSubmit returns an error that says the transaction fails local checks, with the reason text. Nothing is passed to network operations.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "badsig"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "doSubmit(context)"
+    ],
+    "show": "{ \"error\": \"invalidTransaction\",\n  \"error_exception\": \"fails local checks: <reason>\" }"
+   },
+   {
+    "node": "rpc",
+    "text": "The error result passes back up through callMethod unchanged.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "badsig"
+    },
+    "dir": "fail",
+    "ms": 0,
+    "quiet": true
+   },
+   {
+    "node": "server",
+    "text": "processRequest adds status \"error\" and echoes the request. The HTTP status is 200 with the error in the JSON.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "badsig"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "Consumer::charge(loadType)",
+     "httpReply(200, response, output)"
+    ],
+    "show": "{\"result\":{\"error\":\"invalidTransaction\",\"error_exception\":\"fails local checks: ...\",\"status\":\"error\"}}"
+   },
+   {
+    "node": "clients",
+    "text": "The client sees invalidTransaction and must fix the signature before resubmitting.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "badsig"
+    },
+    "dir": "fail",
+    "ms": 0
+   },
+   {
+    "node": "handlers",
+    "text": "A Transaction object is made and its status is NEW. The handler passes it to network operations as a local submission, with the unlimited flag set only for admin callers.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "std::make_shared<Transaction>(stTx, reason, app)",
+     "getFailHard(context)",
+     "NetworkOPs::processTransaction(transaction, isUnlimited(role), true, failType)"
+    ],
+    "show": "Transaction { status: NEW, local: true }"
+   },
+   {
+    "node": "netops",
+    "text": "processTransaction first runs preProcessTransaction. It rejects a cached BAD transaction and checks the signature again with the open ledger rules. The transaction is then added to the batch and applied synchronously.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid"
+    },
+    "dir": "down",
+    "ms": 2,
+    "events": [
+     "NetworkOPsImp::processTransaction(transaction, bUnlimited, bLocal=true, failType)",
+     "preProcessTransaction(transaction)",
+     "doTransactionSync(transaction, bUnlimited, failType)",
+     "NetworkOPsImp::apply(batchLock)",
+     "OpenLedger::modify(...)"
+    ],
+    "show": "TransactionStatus { local: true, admin: false, failType: No }"
+   },
+   {
+    "node": "txq",
+    "text": "For each transaction in the batch, apply hands the open view to TxQ::apply. The queue first preflights the transaction and then tries to apply it directly. The fee level meets the current open ledger cost, so it goes straight in.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "TxQ::apply(app, view, tx, flags, j)",
+     "TxQApplyImpl::apply()",
+     "TxQ::tryDirectApply(app, view, tx, flags, j)"
+    ],
+    "show": "fee level paid >= open ledger fee level"
+   },
+   {
+    "node": "apply",
+    "text": "The apply entry point runs the transaction pipeline against the open view.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "xrpl::apply(registry, view, tx, flags, j)"
+    ]
+   },
+   {
+    "node": "preflight",
+    "text": "Preflight checks format, flags and fields using the Payment transactor's own rules. No ledger state is needed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "preflight(app, rules, tx, flags, j)"
+    ],
+    "show": "preflight ter = tesSUCCESS"
+   },
+   {
+    "node": "preclaim",
+    "text": "Preclaim reads the open ledger. The account exists, the sequence number is the next one, and the balance covers the fee and amount.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 2,
+    "events": [
+     "preclaim(preflightResult, app, view)"
+    ],
+    "show": "preclaim ter = tesSUCCESS"
+   },
+   {
+    "node": "doapply",
+    "text": "The fee is charged and the transactor's doApply moves the funds inside an ApplyView.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 3,
+    "events": [
+     "doApply(preclaimResult, app, view)",
+     "Transactor::operator()()"
+    ],
+    "show": "Fee 10 drops charged, Sequence 1 -> 2, balances updated"
+   },
+   {
+    "node": "invariants",
+    "text": "Invariant checks confirm that no XRP was created and the changed ledger entries are valid. They pass, so the changes are kept in the open ledger.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "up",
+    "ms": 2,
+    "events": [
+     "Transactor::checkInvariants(result, fee, InvariantScope::Full)"
+    ],
+    "show": "result = tesSUCCESS, applied = true"
+   },
+   {
+    "node": "netops",
+    "text": "The result is tesSUCCESS. The transaction is published to proposed-transaction subscribers, marked INCLUDED, and kept in the local transaction list. Its hash is checked so it is relayed only once.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "up",
+    "ms": 2,
+    "events": [
+     "reportFeeChange()",
+     "pubProposedTransaction(newOL, sttx, tesSUCCESS)",
+     "Transaction::setStatus(TransStatus::INCLUDED)",
+     "LocalTxs::pushBack(ledgerIndex, sttx)",
+     "HashRouter::shouldRelay(txID)"
+    ],
+    "show": "status = INCLUDED, submitResult { applied, kept }"
+   },
+   {
+    "node": "overlay",
+    "text": "The transaction is serialized into a TMTransaction message and relayed to peers.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "down",
+    "ms": 3,
+    "events": [
+     "Overlay::relay(txID, TMTransaction, toSkip)",
+     "Transaction::setBroadcast()"
+    ],
+    "show": "TMTransaction { status: tsCURRENT, deferred: false }"
+   },
+   {
+    "node": "txq",
+    "text": "The fee level is below what the open ledger now requires. The transaction is not applied directly, so TxQ checks it can be held. The account has no blocking queue entries, so it is preflighted and preclaimed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "TxQ::apply(app, view, tx, flags, j)",
+     "TxQApplyImpl::apply()",
+     "TxQ::tryDirectApply(app, view, tx, flags, j)",
+     "TxQApplyImpl::applyImplPrelock()"
+    ],
+    "show": "fee level paid < escalated open ledger fee level"
+   },
+   {
+    "node": "preflight",
+    "text": "The queue's preflight of the transaction passes, since format and signatures are fine.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "preflight(app, view.rules(), tx, flags, j)"
+    ],
+    "show": "preflight ter = tesSUCCESS"
+   },
+   {
+    "node": "preclaim",
+    "text": "Preclaim reads ledger state and finds the transaction would claim a fee in a later ledger, so it is allowed into the queue.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "down",
+    "ms": 2,
+    "events": [
+     "preclaim(preflightRes, app, view)"
+    ],
+    "show": "preclaim ter = tesSUCCESS"
+   },
+   {
+    "node": "txq",
+    "text": "The transaction is stored in the queue, in the account's list, and TxQ returns terQUEUED. It is not applied to the open ledger.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "up",
+    "ms": 1,
+    "events": [
+     "TxQ::TxQApplyImpl::apply -> ApplyResult{terQUEUED, false}"
+    ],
+    "show": "result = terQUEUED, applied = false"
+   },
+   {
+    "node": "netops",
+    "text": "The result is terQUEUED. The transaction is marked HELD and added to the held transactions so it can be put back if it is dropped from the queue. It is also kept locally and relayed marked as deferred.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "up",
+    "ms": 2,
+    "events": [
+     "Transaction::setStatus(TransStatus::HELD)",
+     "LedgerMaster::addHeldTransaction(transaction)",
+     "Transaction::setQueued()",
+     "LocalTxs::pushBack(ledgerIndex, sttx)",
+     "HashRouter::shouldRelay(txID)"
+    ],
+    "show": "status = HELD, submitResult { queued, kept }"
+   },
+   {
+    "node": "overlay",
+    "text": "The queued transaction is relayed to peers with the deferred flag set.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "down",
+    "ms": 3,
+    "events": [
+     "Overlay::relay(txID, TMTransaction, toSkip)",
+     "Transaction::setBroadcast()"
+    ],
+    "show": "TMTransaction { status: tsCURRENT, deferred: true }"
+   },
+   {
+    "node": "txq",
+    "text": "TxQ preflights the transaction and tries a direct apply.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "TxQ::apply(app, view, tx, flags, j)",
+     "TxQApplyImpl::apply()",
+     "TxQ::tryDirectApply(app, view, tx, flags, j)"
+    ]
+   },
+   {
+    "node": "apply",
+    "text": "The apply entry point runs the pipeline against the open view.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "xrpl::apply(registry, view, tx, flags, j)"
+    ]
+   },
+   {
+    "node": "preflight",
+    "text": "Preflight passes, as the transaction is well formed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "down",
+    "ms": 1,
+    "events": [
+     "preflight(app, rules, tx, flags, j)"
+    ],
+    "show": "preflight ter = tesSUCCESS"
+   },
+   {
+    "node": "preclaim",
+    "text": "Preclaim compares the transaction's Sequence with the account's current one in the ledger. The number was already used, so it stops with tefPAST_SEQ and the ledger is not changed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "fail",
+    "ms": 2,
+    "events": [
+     "preclaim(preflightResult, app, view)"
+    ],
+    "show": "tx.Sequence 1 < account.Sequence 2 -> tefPAST_SEQ"
+   },
+   {
+    "node": "netops",
+    "text": "The result is tefPAST_SEQ, so the transaction is marked OBSOLETE. It is not applied, queued or relayed. With fail_hard unset, it is still added to the local transaction list.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq",
+     "fail_hard": "no"
+    },
+    "dir": "fail",
+    "ms": 2,
+    "events": [
+     "Transaction::setStatus(TransStatus::OBSOLETE)",
+     "LocalTxs::pushBack(ledgerIndex, sttx)"
+    ],
+    "show": "status = OBSOLETE, submitResult { kept }"
+   },
+   {
+    "node": "netops",
+    "text": "The result is tefPAST_SEQ, so the transaction is marked OBSOLETE. Because fail_hard is true and the result is not success, it is not added to the local transaction list and is not relayed.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq",
+     "fail_hard": "yes"
+    },
+    "dir": "fail",
+    "ms": 2,
+    "events": [
+     "Transaction::setStatus(TransStatus::OBSOLETE)",
+     "enforceFailHard = (failType == FailHard::Yes && !isTesSuccess(result))"
+    ],
+    "show": "status = OBSOLETE, submitResult { }"
+   },
+   {
+    "node": "handlers",
+    "text": "Back in doSubmit, the transaction JSON, blob and tx result are written to the reply. The submit flags and the account's next sequence numbers and open ledger cost are included.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "applied"
+    },
+    "dir": "up",
+    "ms": 1,
+    "events": [
+     "Transaction::getJson(JsonOptions::Values::None)",
+     "transResultInfo(result, sToken, sHuman)",
+     "Transaction::getSubmitResult()",
+     "Transaction::getCurrentLedgerState()"
+    ],
+    "show": "{ \"engine_result\": \"tesSUCCESS\", \"engine_result_code\": 0,\n  \"accepted\": true, \"applied\": true, \"broadcast\": true,\n  \"queued\": false, \"kept\": true,\n  \"account_sequence_next\": 2, \"open_ledger_cost\": \"10\", ... }"
+   },
+   {
+    "node": "handlers",
+    "text": "Back in doSubmit, the transaction JSON, blob and tx result are written to the reply. It shows the transaction was accepted but only queued.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "queued"
+    },
+    "dir": "up",
+    "ms": 1,
+    "events": [
+     "Transaction::getJson(JsonOptions::Values::None)",
+     "transResultInfo(result, sToken, sHuman)",
+     "Transaction::getSubmitResult()"
+    ],
+    "show": "{ \"engine_result\": \"terQUEUED\", \"engine_result_code\": -89,\n  \"accepted\": true, \"applied\": false, \"broadcast\": true,\n  \"queued\": true, \"kept\": true, ... }"
+   },
+   {
+    "node": "handlers",
+    "text": "Back in doSubmit, the reply holds the tefPAST_SEQ result. accepted, applied, broadcast and queued are all false.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq",
+     "fail_hard": "no"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "transResultInfo(result, sToken, sHuman)",
+     "Transaction::getSubmitResult()"
+    ],
+    "show": "{ \"engine_result\": \"tefPAST_SEQ\", \"engine_result_code\": -190,\n  \"accepted\": false, \"applied\": false, \"broadcast\": false,\n  \"queued\": false, \"kept\": true, ... }"
+   },
+   {
+    "node": "handlers",
+    "text": "Back in doSubmit, the reply holds the tefPAST_SEQ result. Nothing was accepted, and kept is false because fail_hard stopped the local keep.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq",
+     "fail_hard": "yes"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "transResultInfo(result, sToken, sHuman)",
+     "Transaction::getSubmitResult()"
+    ],
+    "show": "{ \"engine_result\": \"tefPAST_SEQ\", \"engine_result_code\": -190,\n  \"accepted\": false, \"applied\": false, \"broadcast\": false,\n  \"queued\": false, \"kept\": false, ... }"
+   },
+   {
+    "node": "rpc",
+    "text": "callMethod logs the call to the performance log and returns the result.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": [
+      "applied",
+      "queued"
+     ]
+    },
+    "dir": "up",
+    "ms": 0,
+    "quiet": true,
+    "events": [
+     "PerfLog::rpcFinish(\"submit\", id)"
+    ]
+   },
+   {
+    "node": "rpc",
+    "text": "callMethod logs the call to the performance log and returns the result.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "fail",
+    "ms": 0,
+    "quiet": true,
+    "events": [
+     "PerfLog::rpcFinish(\"submit\", id)"
+    ]
+   },
+   {
+    "node": "server",
+    "text": "processRequest charges the caller for the work, adds status \"success\" and replies with HTTP 200.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": [
+      "applied",
+      "queued"
+     ]
+    },
+    "dir": "up",
+    "ms": 1,
+    "events": [
+     "Consumer::charge(kFeeMediumBurdenRpc)",
+     "httpReply(200, response, output)"
+    ],
+    "show": "HTTP/1.1 200 OK\n\n{\"result\":{\"engine_result\":\"...\",\"status\":\"success\", ...}}"
+   },
+   {
+    "node": "server",
+    "text": "processRequest charges the caller for the work and replies with HTTP 200. The JSON carries a failure result code, not an RPC error.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "fail",
+    "ms": 1,
+    "events": [
+     "Consumer::charge(kFeeMediumBurdenRpc)",
+     "httpReply(200, response, output)"
+    ],
+    "show": "HTTP/1.1 200 OK\n\n{\"result\":{\"engine_result\":\"tefPAST_SEQ\",\"status\":\"success\", ...}}"
+   },
+   {
+    "node": "clients",
+    "text": "The client reads the result. The transaction is in the open ledger or queued, and was sent on to peers for a validated ledger later.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": [
+      "applied",
+      "queued"
+     ]
+    },
+    "dir": "up",
+    "ms": 0
+   },
+   {
+    "node": "clients",
+    "text": "The client reads tefPAST_SEQ and learns that this sequence number is already used. It must rebuild the transaction with a fresh sequence.",
+    "when": {
+     "caller": [
+      "normal",
+      "admin"
+     ],
+     "blob": "valid",
+     "outcome": "pastseq"
+    },
+    "dir": "fail",
+    "ms": 0
+   }
+  ]
+ }
+}

@@ -1,0 +1,617 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><style>html,body{margin:0}</style></head><body>
+<title>xrpld Architecture</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,500..800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a system diagram drawn like a schematic. Horizontal lanes run from
+   the caller (top) to the wire (bottom); the walkthrough panel on the right
+   narrates one path through it, step by step. */
+:root {
+  --paper: #f1f3f5;
+  --panel: #ffffff;
+  --ink: #18212c;
+  --muted: #5a6677;
+  --faint: #8e98a5;
+  --line: #d9dfe6;
+  --lane: #e8ecf0;
+  --edge: #a9b4c1;
+  --accent: #1f5fd6;
+  --accent-soft: #dfe8fb;
+  --step: #eef3fd;
+  --resp: #12805f;
+  --fail: #c8372d;
+  --log-bg: #f6f8fa;
+  --font-display: "Archivo", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f141b; --panel: #171e29; --ink: #e6ebf1; --muted: #9ca8b7; --faint: #6f7b8b;
+    --line: #283345; --lane: #131a23; --edge: #4a586b; --accent: #7fa4ff; --accent-soft: #1f2d4f; --step: #1a2537;
+    --resp: #3ccf9b; --fail: #ff6b5f; --log-bg: #121922;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f141b; --panel: #171e29; --ink: #e6ebf1; --muted: #9ca8b7; --faint: #6f7b8b;
+  --line: #283345; --lane: #131a23; --edge: #4a586b; --accent: #7fa4ff; --accent-soft: #1f2d4f; --step: #1a2537;
+  --resp: #3ccf9b; --fail: #ff6b5f; --log-bg: #121922;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font: 15px/1.55 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 40px;
+}
+button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font: .86em var(--font-mono); background: var(--lane); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+.wrap { max-width: 1480px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+header { display: flex; flex-direction: column; gap: 10px; }
+.eyebrow { font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 760 clamp(30px, 4.6vw, 46px)/1 var(--font-display); font-stretch: 82%; margin: 0; letter-spacing: -.01em; }
+.summary { margin: 0; font-size: 17px; max-width: 78ch; text-wrap: pretty; }
+
+.flows { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.flows .lab { font-size: 13px; color: var(--muted); margin-right: 4px; }
+.flows button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 13.5px; cursor: pointer; }
+.flows button:hover { border-color: var(--ink); }
+.flows button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+
+.work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; min-width: 0; }
+#svg { display: block; width: 100%; min-width: 920px; height: auto; }
+.lane-bg { fill: var(--lane); }
+.lane-lab { font: 600 11.5px var(--font-mono); letter-spacing: .08em; fill: var(--muted); text-transform: uppercase; }
+.e { fill: none; stroke: var(--edge); stroke-width: 1.4; }
+.e.addon { stroke-dasharray: 4 3; }
+.e.on { stroke: var(--accent); stroke-width: 2.6; }
+.e.near { stroke: var(--ink); stroke-width: 1.8; }
+.elab rect { fill: var(--panel); }
+.elab text { font: 12px var(--font-body); fill: var(--muted); }
+.elab.on text { fill: var(--accent); font-weight: 600; }
+.mk path { fill: var(--edge); }
+.mk-on path { fill: var(--accent); }
+.mk-near path { fill: var(--ink); }
+.n { cursor: pointer; }
+.n rect.box { fill: var(--panel); stroke: var(--ink); stroke-width: 1.3; }
+.n.step rect.box { fill: var(--step); stroke: var(--accent); }
+.n.store rect.box { stroke-width: 2.4; }
+.n.external rect.box { stroke-dasharray: 5 3; fill: var(--lane); }
+.n.addon rect.box { stroke: var(--faint); stroke-dasharray: 4 3; }
+.n .t { font: 600 14.5px var(--font-body); fill: var(--ink); }
+.n .s { font: 11.5px var(--font-mono); fill: var(--muted); }
+.n:hover rect.box { stroke-width: 2.4; }
+.n.sel rect.box { stroke: var(--accent); stroke-width: 3; }
+.n.inflow rect.box { stroke: var(--accent); stroke-width: 2.2; }
+.n.cur rect.box { fill: var(--accent-soft); stroke-width: 3; }
+svg.dim .n:not(.inflow):not(.sel):not(.near) { opacity: .28; }
+svg.dim .e:not(.on):not(.near), svg.dim .elab:not(.on):not(.near) { opacity: .18; }
+.badge circle { fill: var(--accent); }
+.badge text { font: 700 11px var(--font-body); fill: var(--panel); }
+.hint { font-size: 12.5px; color: var(--muted); padding: 8px 14px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.key i { display: inline-block; width: 18px; height: 12px; border-radius: 3px; border: 1.5px solid var(--ink); background: var(--panel); }
+.key i.step { background: var(--step); border-color: var(--accent); }
+.key i.store { border-width: 2.5px; }
+.key i.addon { border-style: dashed; border-color: var(--faint); }
+
+aside.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; min-width: 0; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); max-height: calc(100vh - 24px); overflow-y: auto; }
+.panel h2 { font: 720 22px/1.15 var(--font-display); font-stretch: 86%; margin: 0; }
+.panel .kicker { font: 500 11px var(--font-mono); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.panel p { margin: 0; }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: s; }
+.steps li button { width: 100%; text-align: left; border: 0; background: transparent; cursor: pointer; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 10px; padding: 8px 8px; border-radius: 6px; }
+.steps li button:hover { background: var(--lane); }
+.steps li button[aria-current="true"] { background: var(--accent-soft); }
+.steps .num { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--panel); font: 700 11.5px/22px var(--font-body); text-align: center; }
+.steps .nm { font-weight: 600; font-size: 14px; }
+.steps .tx { grid-column: 2; font-size: 13.5px; color: var(--ink); }
+.nav { display: flex; gap: 8px; }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 5px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+.btn:hover { border-color: var(--ink); }
+.btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.files li { font: 12px/1.4 var(--font-mono); overflow-wrap: anywhere; color: var(--ink); }
+.files li span { color: var(--faint); }
+.links { display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.links button { border: 0; background: none; padding: 0; color: var(--accent); cursor: pointer; font-weight: 500; }
+.links button:hover { text-decoration: underline; }
+.sub { font: 600 12px var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 4px; }
+.back { align-self: flex-start; }
+
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.card h3 { margin: 0; font: 700 16px var(--font-display); font-stretch: 90%; }
+.changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.changes li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; padding: 8px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.changes li:last-child { border-bottom: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 4px; padding: 2px 8px; font-size: 12.5px; cursor: pointer; }
+.chips button:hover { border-color: var(--accent); color: var(--accent); }
+.ai p { color: var(--muted); font-size: 13.5px; }
+.status { font-size: 12.5px; color: var(--muted); }
+pre.md { margin: 0; background: var(--lane); border-radius: 6px; padding: 12px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 360px; overflow-y: auto; }
+
+/* Live call simulator */
+.sim { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.sim-top { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.sim-top h2 { margin: 0; font: 720 20px/1 var(--font-display); font-stretch: 86%; }
+.sim-top input { flex: 1 1 260px; min-width: 0; border: 1px solid var(--line); background: var(--paper); border-radius: 5px; padding: 8px 10px; font: 13.5px var(--font-mono); }
+.send { background: var(--accent); color: var(--panel); border: 0; border-radius: 5px; padding: 9px 18px; font-weight: 600; cursor: pointer; }
+.send:hover { filter: brightness(1.08); }
+.send[data-running="true"] { background: var(--ink); }
+.opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 10px 18px; }
+.opt { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.opt > span { font: 600 11px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.opt.off { opacity: .4; }
+.segs { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; }
+.segs button { flex: 1 1 auto; border: 0; background: transparent; padding: 6px 10px; font-size: 12.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.segs button + button { border-left: 1px solid var(--line); }
+.segs button[aria-pressed="true"] { background: var(--ink); color: var(--panel); }
+.segs button:disabled { cursor: not-allowed; }
+.speed { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); }
+.speed .segs button { padding: 4px 9px; }
+.pulse { pointer-events: none; }
+.pulse circle.core { fill: var(--accent); }
+.pulse circle.halo { fill: var(--accent); opacity: .25; }
+.pulse.up circle { fill: var(--resp); }
+.pulse.fail circle { fill: var(--fail); }
+.e.up { stroke: var(--resp); stroke-width: 2.6; }
+.e.fail { stroke: var(--fail); stroke-width: 2.6; stroke-dasharray: 6 4; }
+.mk-up path { fill: var(--resp); }
+.mk-fail path { fill: var(--fail); }
+.elab.up text { fill: var(--resp); font-weight: 600; }
+.jump { stroke: var(--accent); stroke-width: 2; stroke-dasharray: 5 4; fill: none; }
+.jump.up { stroke: var(--resp); } .jump.fail { stroke: var(--fail); }
+svg.live .n:not(.inflow):not(.cur) { opacity: .35; }
+svg.live .e:not(.on):not(.up):not(.fail), svg.live .elab:not(.on):not(.up):not(.fail) { opacity: .2; }
+.n.cur rect.box { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3.2; }
+.n.cur.up rect.box { stroke: var(--resp); }
+.n.cur.fail rect.box { stroke: var(--fail); }
+.live-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.counter { font: 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dirtag { display: inline-block; font: 600 10.5px var(--font-mono); letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; color: var(--panel); background: var(--accent); }
+.dirtag.up { background: var(--resp); } .dirtag.fail { background: var(--fail); }
+.narr { font-size: 15px; min-height: 3em; }
+pre.flight { margin: 0; background: var(--log-bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.log { background: var(--log-bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 0; font: 12px/1.55 var(--font-mono); max-height: 260px; overflow-y: auto; }
+.log div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; padding: 0 12px; }
+.log div span:first-child { text-align: right; color: var(--faint); font-variant-numeric: tabular-nums; }
+.log div.new { background: var(--accent-soft); }
+.log div.done { color: var(--resp); font-weight: 600; }
+.log .empty { display: block; color: var(--faint); padding: 0 12px; }
+
+@media (max-width: 1100px) {
+  .work, .lower { grid-template-columns: minmax(0, 1fr); }
+  aside.panel { position: static; max-height: none; }
+}
+@media (max-width: 560px) {
+  .changes li { grid-template-columns: minmax(0, 1fr); }
+  .chips { justify-content: flex-start; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">How it works</div>
+    <h1 id="title"></h1>
+    <p class="summary" id="summary"></p>
+    <div class="flows" id="flows" role="group" aria-label="Walkthroughs"><span class="lab">Guided tours:</span></div>
+  </header>
+
+  <section class="sim" id="sim" hidden></section>
+
+  <div class="work">
+    <section class="diagram" aria-label="Architecture diagram">
+      <svg id="svg" role="img" aria-label="Architecture diagram"></svg>
+      <div class="hint">
+        <span>Click any box for what it does and where it lives.</span>
+        <span class="key"><i></i>Component</span>
+        <span class="key"><i class="step"></i>Pipeline step, in order</span>
+        <span class="key"><i class="store"></i>Holds state</span>
+        <span class="key"><i class="addon"></i>Optional</span>
+      </div>
+    </section>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <div class="lower">
+    <section class="card">
+      <h3>Where to make a change</h3>
+      <ul class="changes" id="changes"></ul>
+    </section>
+    <section class="card ai">
+      <h3>Give this to an AI assistant</h3>
+      <p>The same architecture as plain text, ready to keep in an assistant's context or commit as <code>ARCHITECTURE.md</code>.</p>
+      <div class="nav"><button class="btn primary" id="copy" type="button">Copy as Markdown</button><button class="btn" id="showMd" type="button" aria-expanded="false">Show</button><span class="status" id="status" role="status"></span></div>
+      <pre class="md" id="md" hidden></pre>
+    </section>
+  </div>
+</div>
+
+<script>
+const ARCH = {"name":"xrpld","summary":"xrpld is the server software for the XRP Ledger, a peer-to-peer network that keeps a shared ledger of accounts, tokens and offers. A node connects to other peers, collects submitted transactions, agrees with its validators on the next set of transactions through consensus, applies them to the ledger, and stores the result. Clients talk to it over JSON-RPC, WebSocket or gRPC. The protocol and transaction logic live in the libxrpl library, and the server application is built on top of it.","groups":[{"id":"clients","label":"Callers and network","description":"Outside parties that send requests, transactions and ledger data to the node."},{"id":"api","label":"Public API","description":"Network listeners and request dispatchers that accept client and peer traffic."},{"id":"app","label":"Application core","description":"The Application object and the services that run the node: transaction intake, consensus, ledger management and validator trust."},{"id":"tx","label":"Transaction engine","description":"The pipeline that checks and applies one transaction to a ledger view, in fixed order."},{"id":"ledger","label":"Ledger and protocol","description":"Ledger data structures, views and the protocol types they are built from."},{"id":"storage","label":"Storage and infrastructure","description":"Persistent stores, job scheduling, rate limiting and metrics."}],"nodes":[{"id":"clients","group":"clients","kind":"external","label":"API clients","description":"Wallets, apps and tools that submit transactions and query the ledger over JSON-RPC, WebSocket or gRPC.","files":[]},{"id":"peers","group":"clients","kind":"external","label":"Network peers","description":"Other xrpld nodes and validators that relay transactions, proposals, validations and ledger data.","files":[]},{"id":"main","group":"app","kind":"core","label":"Application","description":"Main parses the command line and config, then builds the Application object that owns and wires together all services. Most components keep a reference to it.","files":["src/xrpld/app/main/Main.cpp","src/xrpld/app/main/Application.h","src/xrpld/app/main/Application.cpp","src/xrpld/core/Config.h"]},{"id":"server","group":"api","kind":"core","label":"HTTP/WS server","description":"Listens on configured ports and runs HTTP and WebSocket sessions, TLS included, handing each request to the RPC layer.","files":["include/xrpl/server/Server.h","include/xrpl/server/detail/Door.h","include/xrpl/server/Port.h","src/xrpld/rpc/ServerHandler.h"]},{"id":"rpc","group":"api","kind":"core","label":"RPC dispatch","description":"Builds a request context, checks the caller's role and rate limits, looks up the handler by method name and runs it on the job queue.","files":["src/xrpld/rpc/detail/RPCHandler.cpp","src/xrpld/rpc/detail/Handler.cpp","src/xrpld/rpc/Context.h","src/xrpld/rpc/Role.h"]},{"id":"handlers","group":"api","kind":"core","label":"RPC handlers","description":"One handler per RPC method, grouped by area such as account, ledger, orderbook, transaction, subscribe and admin.","files":["src/xrpld/rpc/handlers/Handlers.h","src/xrpld/rpc/handlers/transaction/Submit.cpp","src/xrpld/rpc/handlers/subscribe/Subscribe.cpp","src/xrpld/rpc/detail/RPCHelpers.h"]},{"id":"grpc","group":"api","kind":"addon","label":"gRPC server","description":"Serves a gRPC interface next to the JSON-RPC one, when it is configured.","files":["src/xrpld/app/main/GRPCServer.h","src/xrpld/app/main/GRPCServer.cpp","src/xrpld/rpc/GRPCHandlers.h"]},{"id":"overlay","group":"api","kind":"core","label":"Peer overlay","description":"Manages peer connections, the handshake, protocol messages and relay of transactions, proposals and validations between nodes.","files":["src/xrpld/overlay/Overlay.h","src/xrpld/overlay/detail/OverlayImpl.cpp","src/xrpld/overlay/detail/PeerImp.cpp","src/xrpld/overlay/Peer.h"]},{"id":"peerfinder","group":"api","kind":"core","label":"Peer discovery","description":"Decides which peers to connect to, tracks slots and keeps a cache of known endpoints.","files":["include/xrpl/peerfinder/PeerfinderManager.h","src/libxrpl/peerfinder/PeerfinderManager.cpp","src/libxrpl/peerfinder/Bootcache.cpp","src/xrpld/peerfinder/PeerfinderManager.h"]},{"id":"netops","group":"app","kind":"core","label":"Network operations","description":"The hub that accepts submitted and relayed transactions, tracks the node's operating mode, drives consensus rounds and publishes subscription events.","files":["include/xrpl/server/NetworkOPs.h","src/xrpld/app/misc/NetworkOPs.cpp","src/xrpld/app/misc/make_NetworkOPs.h"]},{"id":"txq","group":"app","kind":"store","label":"Transaction queue","description":"Holds transactions that do not fit in the open ledger at the current fee level and applies fee escalation.","files":["src/xrpld/app/misc/TxQ.h","src/xrpld/app/misc/detail/TxQ.cpp","src/xrpld/app/misc/FeeEscalation.md"]},{"id":"consensus","group":"app","kind":"core","label":"Consensus","description":"A generic consensus algorithm in libxrpl plus the RCL adaptor in xrpld. Validators exchange proposals, resolve disputed transactions and agree on the next ledger.","files":["include/xrpl/consensus/Consensus.h","src/libxrpl/consensus/Consensus.cpp","src/xrpld/app/consensus/RCLConsensus.h","src/xrpld/app/consensus/RCLConsensus.cpp"]},{"id":"validators","group":"app","kind":"core","label":"Validator trust","description":"Keeps the trusted validator list from config and published lists, verifies manifests and collects validations from trusted validators.","files":["src/xrpld/app/misc/ValidatorList.h","src/xrpld/app/misc/detail/ValidatorList.cpp","include/xrpl/server/Manifest.h","src/xrpld/app/consensus/RCLValidations.h"]},{"id":"ledgermaster","group":"app","kind":"core","label":"Ledger master","description":"Tracks the open, closed and validated ledgers, advances the validated ledger and keeps ledger history.","files":["src/xrpld/app/ledger/LedgerMaster.h","src/xrpld/app/ledger/detail/LedgerMaster.cpp","src/xrpld/app/ledger/OpenLedger.h","src/xrpld/app/ledger/detail/BuildLedger.cpp"]},{"id":"inbound","group":"app","kind":"core","label":"Ledger acquisition","description":"Fetches missing ledgers and transaction sets from peers, and replays ledgers by delta, so the node can catch up with the network.","files":["src/xrpld/app/ledger/InboundLedger.h","src/xrpld/app/ledger/detail/InboundLedgers.cpp","src/xrpld/app/ledger/detail/TransactionAcquire.h","src/xrpld/app/ledger/LedgerReplayer.h"]},{"id":"amendments","group":"app","kind":"core","label":"Amendments","description":"Tracks which protocol amendments are enabled and votes on pending ones. Transaction behavior changes are gated behind them.","files":["include/xrpl/ledger/AmendmentTable.h","src/xrpld/app/misc/detail/AmendmentTable.cpp","include/xrpl/protocol/Feature.h","include/xrpl/protocol/detail/features.macro"]},{"id":"apply","group":"tx","kind":"step","label":"Apply entry","description":"The entry points that take a signed transaction and a view and run the transaction pipeline, returning a result code and whether it was applied.","files":["include/xrpl/tx/apply.h","src/libxrpl/tx/apply.cpp","include/xrpl/tx/applySteps.h","src/libxrpl/tx/applySteps.cpp"]},{"id":"preflight","group":"tx","kind":"step","label":"Preflight","description":"Checks the transaction on its own: format, flags, fields and signatures. It needs no ledger state, so its result can be cached.","files":["include/xrpl/tx/Transactor.h","src/libxrpl/tx/Transactor.cpp"]},{"id":"preclaim","group":"tx","kind":"step","label":"Preclaim","description":"Reads the current ledger to check the account, sequence number, fee and type-specific conditions without changing anything.","files":["include/xrpl/tx/Transactor.h","src/libxrpl/tx/Transactor.cpp","include/xrpl/tx/ApplyContext.h"]},{"id":"doapply","group":"tx","kind":"step","label":"Do apply","description":"Charges the fee, then runs the transactor's own doApply to change ledger entries inside an ApplyView.","files":["src/libxrpl/tx/Transactor.cpp","src/libxrpl/tx/ApplyContext.cpp","include/xrpl/ledger/ApplyViewImpl.h"]},{"id":"invariants","group":"tx","kind":"step","label":"Invariant checks","description":"After a transaction runs, checks rules such as no XRP created and valid ledger entries. A violation turns the result into a failure.","files":["include/xrpl/tx/invariants/InvariantCheck.h","include/xrpl/tx/invariants/InvariantRunner.h","src/libxrpl/tx/invariants/InvariantRunner.cpp","src/libxrpl/tx/invariants/InvariantCheck.cpp"]},{"id":"transactors","group":"tx","kind":"core","label":"Transactors","description":"One class per transaction type, such as Payment, OfferCreate or EscrowCreate, grouped by feature area. Each derives from Transactor and overrides the pipeline steps.","files":["include/xrpl/tx/transactors/account/AccountSet.h","src/libxrpl/tx/transactors/account/AccountSet.cpp","include/xrpl/tx/transactors/dex/OfferCreate.h","include/xrpl/tx/transactors/escrow/EscrowCreate.h"]},{"id":"paths","group":"tx","kind":"core","label":"Payment paths","description":"The payment engine that finds and executes paths through trust lines, order books and AMMs, in steps with quality tracking.","files":["include/xrpl/tx/paths/Flow.h","src/libxrpl/tx/paths/Flow.cpp","include/xrpl/tx/paths/detail/Steps.h","include/xrpl/tx/paths/RippleCalc.h"]},{"id":"views","group":"ledger","kind":"core","label":"Ledger views","description":"Layered read and write views over a ledger: ReadView, OpenView, ApplyView and Sandbox. Changes made to a view are only committed when they succeed.","files":["include/xrpl/ledger/ReadView.h","include/xrpl/ledger/ApplyView.h","include/xrpl/ledger/OpenView.h","include/xrpl/ledger/Sandbox.h"]},{"id":"ledger","group":"ledger","kind":"core","label":"Ledger","description":"A ledger is a header plus a state tree and a transaction tree. It can be open, closed or validated.","files":["include/xrpl/ledger/Ledger.h","src/libxrpl/ledger/Ledger.cpp","include/xrpl/protocol/LedgerHeader.h"]},{"id":"helpers","group":"ledger","kind":"core","label":"Ledger helpers","description":"Shared functions that transactors and invariants use to read and edit common ledger objects such as accounts, directories, trust lines and tokens.","files":["include/xrpl/ledger/helpers/AccountRootHelpers.h","include/xrpl/ledger/helpers/DirectoryHelpers.h","include/xrpl/ledger/helpers/TokenHelpers.h","include/xrpl/ledger/View.h"]},{"id":"protocol","group":"ledger","kind":"core","label":"Protocol types","description":"Serialized object types, fields, amounts, keys, signing, error codes and the tables of transaction and ledger entry formats.","files":["include/xrpl/protocol/STTx.h","include/xrpl/protocol/SField.h","include/xrpl/protocol/TER.h","include/xrpl/protocol/detail/transactions.macro"]},{"id":"codegen","group":"ledger","kind":"addon","label":"Protocol codegen","description":"Python scripts that read the transaction and ledger entry macro files and generate typed wrapper classes in protocol_autogen.","files":["cmake/scripts/codegen/generate_tx_classes.py","cmake/scripts/codegen/generate_ledger_classes.py","include/xrpl/protocol/detail/ledger_entries.macro","include/xrpl/protocol_autogen/TransactionBase.h"]},{"id":"shamap","group":"storage","kind":"store","label":"SHAMap","description":"A Merkle tree that holds ledger state and transactions, with hashing, diffing and sync support. Nodes are read from and written to the node store.","files":["include/xrpl/shamap/SHAMap.h","src/libxrpl/shamap/SHAMap.cpp","src/libxrpl/shamap/SHAMapSync.cpp","src/xrpld/shamap/NodeFamily.h"]},{"id":"nodestore","group":"storage","kind":"store","label":"Node store","description":"Key-value storage for ledger tree nodes, with pluggable backends such as NuDB, RocksDB and memory.","files":["include/xrpl/nodestore/Database.h","include/xrpl/nodestore/Backend.h","src/libxrpl/nodestore/backend/NuDBFactory.cpp","src/libxrpl/nodestore/DatabaseNodeImp.cpp"]},{"id":"shamapstore","group":"storage","kind":"core","label":"History rotation","description":"Runs online deletion by rotating node store databases so old ledger history is dropped without stopping the node.","files":["src/xrpld/app/misc/SHAMapStore.h","src/xrpld/app/misc/SHAMapStoreImp.cpp","include/xrpl/nodestore/DatabaseRotating.h"]},{"id":"reldb","group":"storage","kind":"store","label":"SQL databases","description":"SQLite databases accessed through SOCI that hold ledger and transaction indexes for lookups, plus wallet and peer data.","files":["include/xrpl/rdb/DatabaseCon.h","include/xrpl/rdb/RelationalDatabase.h","src/xrpld/app/rdb/backend/SQLiteDatabase.h","src/libxrpl/rdb/DatabaseCon.cpp"]},{"id":"jobqueue","group":"storage","kind":"store","label":"Job queue","description":"A prioritized thread pool. RPC calls, consensus work and ledger tasks are queued here as typed jobs.","files":["include/xrpl/core/JobQueue.h","src/libxrpl/core/detail/JobQueue.cpp","include/xrpl/core/Job.h","include/xrpl/core/ServiceRegistry.h"]},{"id":"hashrouter","group":"storage","kind":"store","label":"Hash router","description":"Remembers recently seen transactions and messages so they are not processed or relayed twice, and holds flags from earlier checks.","files":["include/xrpl/core/HashRouter.h","src/libxrpl/core/HashRouter.cpp","src/xrpld/app/misc/detail/setup_HashRouter.cpp"]},{"id":"resource","group":"storage","kind":"core","label":"Resource limits","description":"Charges peers and clients for expensive requests and blocks or disconnects abusive ones.","files":["include/xrpl/resource/ResourceManager.h","include/xrpl/resource/Consumer.h","src/libxrpl/resource/ResourceManager.cpp","include/xrpl/resource/Fees.h"]},{"id":"metrics","group":"storage","kind":"addon","label":"Metrics and logs","description":"Insight metrics sent to StatsD, the performance log and the Journal logging interface.","files":["include/xrpl/beast/insight/Collector.h","src/xrpld/app/main/CollectorManager.h","include/xrpl/core/PerfLog.h","include/xrpl/beast/utility/Journal.h"]}],"edges":[{"from":"clients","to":"server","label":"HTTP, WebSocket"},{"from":"clients","to":"grpc"},{"from":"peers","to":"overlay"},{"from":"main","to":"server","label":"creates"},{"from":"main","to":"netops","label":"creates"},{"from":"main","to":"overlay","label":"creates"},{"from":"main","to":"jobqueue"},{"from":"main","to":"nodestore"},{"from":"main","to":"reldb"},{"from":"main","to":"metrics"},{"from":"server","to":"rpc"},{"from":"grpc","to":"rpc"},{"from":"rpc","to":"handlers","label":"dispatches"},{"from":"rpc","to":"jobqueue","label":"runs on"},{"from":"rpc","to":"resource"},{"from":"handlers","to":"netops","label":"submit"},{"from":"handlers","to":"ledgermaster","label":"read ledgers"},{"from":"handlers","to":"reldb","label":"history queries"},{"from":"handlers","to":"paths"},{"from":"overlay","to":"peerfinder"},{"from":"overlay","to":"netops","label":"relays to"},{"from":"overlay","to":"inbound","label":"serves data"},{"from":"overlay","to":"resource"},{"from":"overlay","to":"hashrouter"},{"from":"netops","to":"txq"},{"from":"netops","to":"apply"},{"from":"netops","to":"consensus"},{"from":"netops","to":"ledgermaster"},{"from":"netops","to":"hashrouter"},{"from":"txq","to":"apply"},{"from":"consensus","to":"validators"},{"from":"consensus","to":"ledgermaster","label":"builds ledger"},{"from":"consensus","to":"inbound","label":"fetch tx sets"},{"from":"consensus","to":"overlay","label":"broadcast"},{"from":"ledgermaster","to":"inbound"},{"from":"ledgermaster","to":"ledger"},{"from":"ledgermaster","to":"apply","label":"applies tx set"},{"from":"ledgermaster","to":"reldb","label":"saves index"},{"from":"ledgermaster","to":"shamapstore"},{"from":"inbound","to":"shamap"},{"from":"inbound","to":"overlay","label":"requests"},{"from":"amendments","to":"validators"},{"from":"apply","to":"preflight"},{"from":"preflight","to":"preclaim"},{"from":"preclaim","to":"doapply"},{"from":"doapply","to":"invariants"},{"from":"preflight","to":"transactors","label":"calls overrides"},{"from":"preclaim","to":"transactors"},{"from":"doapply","to":"transactors"},{"from":"transactors","to":"paths"},{"from":"transactors","to":"helpers"},{"from":"transactors","to":"views"},{"from":"transactors","to":"amendments","label":"feature gates"},{"from":"invariants","to":"helpers"},{"from":"paths","to":"views"},{"from":"views","to":"ledger"},{"from":"ledger","to":"shamap"},{"from":"helpers","to":"views"},{"from":"views","to":"protocol"},{"from":"codegen","to":"protocol","label":"generates from"},{"from":"shamap","to":"nodestore"},{"from":"shamapstore","to":"nodestore","label":"rotates"},{"from":"jobqueue","to":"metrics"}],"flows":[{"id":"submit-transaction","title":"Submit a transaction over RPC","steps":[{"node":"clients","text":"A client sends a signed transaction with the submit method over HTTP or WebSocket."},{"node":"server","text":"The listener reads the request on its port and passes it to the server handler."},{"node":"rpc","text":"The dispatcher builds a context, checks role and resource charges, and finds the handler by method name."},{"node":"handlers","text":"The submit handler parses and checks the transaction, then passes it to network operations."},{"node":"netops","text":"Network operations checks the hash router for duplicates, then queues the transaction for processing."},{"node":"apply","text":"The transaction is run against the open ledger through the apply entry points."},{"node":"preflight","text":"Preflight checks the transaction's format, fields and signatures."},{"node":"preclaim","text":"Preclaim checks the account, sequence and fee against current ledger state."},{"node":"doapply","text":"The fee is charged and the transactor changes ledger entries in a view."},{"node":"invariants","text":"Invariant checks confirm the changes are legal before they are kept."},{"node":"txq","text":"If the open ledger cannot take it at the current fee level, the transaction waits in the queue."},{"node":"overlay","text":"A transaction that is accepted is relayed to peers."}]},{"id":"ledger-close","title":"Agree on and apply the next ledger","steps":[{"node":"netops","text":"Network operations starts a consensus round when the ledger is ready to close."},{"node":"consensus","text":"The consensus engine proposes the node's candidate transaction set and exchanges positions with trusted validators."},{"node":"validators","text":"Only proposals and validations from trusted validators count toward agreement."},{"node":"inbound","text":"If peers propose a transaction set the node lacks, it is fetched from them."},{"node":"ledgermaster","text":"Once agreed, the ledger master builds the new ledger by applying the set to the previous closed ledger."},{"node":"apply","text":"Each transaction in the canonical order goes through the transaction pipeline."},{"node":"shamap","text":"The state and transaction trees are updated and hashed to produce the new ledger hashes."},{"node":"nodestore","text":"The new tree nodes are written to the node store."},{"node":"reldb","text":"Ledger and transaction indexes are saved to the SQL database for later queries."}]},{"id":"startup","title":"Start the server and catch up","steps":[{"node":"main","text":"Main reads the command line and config file, then constructs the Application and starts its services."},{"node":"nodestore","text":"The node store and SQL databases are opened, and the latest stored ledger is loaded."},{"node":"jobqueue","text":"The job queue starts its worker threads."},{"node":"server","text":"RPC and WebSocket ports begin listening."},{"node":"peerfinder","text":"Peer discovery picks addresses from config, the boot cache and other sources."},{"node":"overlay","text":"The overlay connects to peers and runs the handshake with each."},{"node":"inbound","text":"The node requests the ledgers it is missing from its peers."},{"node":"ledgermaster","text":"When a recent validated ledger is in hand, the node joins normal operation."}]},{"id":"peer-transaction","title":"Receive a transaction from a peer","steps":[{"node":"peers","text":"A peer sends a transaction message."},{"node":"overlay","text":"The peer connection decodes the message and charges the peer for the work."},{"node":"hashrouter","text":"The hash router drops transactions the node has already seen."},{"node":"netops","text":"Network operations submits the transaction for checking and application."},{"node":"apply","text":"The transaction runs through preflight, preclaim and apply against the open ledger."},{"node":"overlay","text":"If it is accepted, it is relayed on to other peers."}]}],"changes":[{"task":"Add a new transaction type","nodes":["protocol","transactors","codegen","amendments","helpers"]},{"task":"Change the behavior of an existing transaction","nodes":["transactors","amendments","helpers","invariants"]},{"task":"Add an RPC method","nodes":["handlers","rpc","protocol"]},{"task":"Add or change an invariant check","nodes":["invariants","helpers"]},{"task":"Tune fee escalation or queue limits","nodes":["txq","netops"]},{"task":"Change consensus or validation behavior","nodes":["consensus","validators","ledgermaster"]},{"task":"Add a node store backend or change storage","nodes":["nodestore","shamapstore","shamap"]},{"task":"Change peer messaging or connection rules","nodes":["overlay","peerfinder","resource"]}],"scenario":{"title":"Submit a signed transaction over JSON-RPC","eventsLabel":"Code path (simulated timing)","input":{"label":"JSON-RPC request body","value":"{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"12000022800000002400000001614000000000000064684000000000000000A732103AB40...\"}]}","pattern":"\"method\"\\s*:\\s*\"(?<method>\\w+)\""},"options":[{"id":"caller","label":"Caller","choices":[{"value":"normal","label":"Public client"},{"value":"admin","label":"Admin client"},{"value":"flooding","label":"Abusive client"}]},{"id":"blob","label":"Transaction blob","choices":[{"value":"valid","label":"Valid and signed"},{"value":"garbled","label":"Truncated blob"},{"value":"badsig","label":"Bad signature"}]},{"id":"outcome","label":"Ledger outcome","enabledWhen":{"blob":"valid"},"choices":[{"value":"applied","label":"Fee is enough, applied"},{"value":"queued","label":"Fee too low, queued"},{"value":"pastseq","label":"Sequence already used"}]},{"id":"fail_hard","label":"fail_hard","enabledWhen":{"outcome":"pastseq"},"choices":[{"value":"no","label":"Not set"},{"value":"yes","label":"Set to true"}]}],"steps":[{"node":"clients","text":"A client POSTs a JSON-RPC request with method {method}. The params hold a hex tx_blob, the serialized signed transaction.","dir":"down","ms":0,"show":"POST / HTTP/1.1\nContent-Type: application/json\n\n{\"method\":\"submit\",\"params\":[{\"tx_blob\":\"1200002280000000...\"}]}"},{"node":"server","text":"The port's Door accepted the connection and an HTTP session was created. ServerHandler::onRequest checks that the port serves HTTP and that any user and password are right, then detaches the session.","dir":"down","ms":1,"events":["Door::doAccept()","PlainHTTPPeer::run()","ServerHandler::onRequest(session)"]},{"node":"jobqueue","text":"The session is posted to the job queue as a client RPC coroutine, so a worker thread does the rest of the work.","dir":"down","ms":1,"events":["JobQueue::postCoro(JtClientRpc, \"RPC-Client\")","ServerHandler::processSession(session, coro)"]},{"node":"server","text":"processRequest parses the body as JSON, reads the method name and works out the caller's role for this port and address.","dir":"down","ms":1,"events":["ServerHandler::processRequest(port, body, remoteIP)","json::Reader::parse(body)","rpc::roleRequired(apiVersion, beta, \"submit\")","requestRole(Role::GUEST, port, params, remoteIP, user)"],"show":"method = \"submit\"\nrequired role = GUEST (submit is not an admin method)"},{"node":"resource","text":"The remote address gets a resource consumer. The abusive client has already used up its allowance, so the consumer says to disconnect it.","when":{"caller":"flooding"},"dir":"fail","ms":1,"events":["resource::Manager::newInboundEndpoint(remoteIP, false, forwardedFor)","Consumer::disconnect(journal)"],"show":"consumer.disconnect() == true"},{"node":"server","text":"The request is refused before any handler runs. The server replies with HTTP 503 and the session ends.","when":{"caller":"flooding"},"dir":"fail","ms":1,"events":["httpReply(503, \"Server is overloaded\", output)"],"show":"HTTP/1.1 503 Service Unavailable\n\nServer is overloaded"},{"node":"clients","text":"The client gets the 503 and its transaction never reaches the ledger code.","when":{"caller":"flooding"},"dir":"fail","ms":0},{"node":"resource","text":"The remote address gets a metered consumer from the resource manager. It is under its limit, so the request goes on.","when":{"caller":"normal"},"dir":"down","ms":1,"events":["resource::Manager::newInboundEndpoint(remoteIP, false, forwardedFor)","Consumer::disconnect(journal)"],"show":"role = GUEST\nconsumer.disconnect() == false"},{"node":"resource","text":"The caller's address is on the port's admin list, so the role is ADMIN. Admin callers get an unlimited endpoint that is never charged into a disconnect.","when":{"caller":"admin"},"dir":"down","ms":1,"events":["isAdmin(port, params, remoteIP)","resource::Manager::newUnlimitedEndpoint(remoteIP)"],"show":"role = ADMIN\nunlimited consumer"},{"node":"rpc","text":"The JsonContext is built and rpc::doCommand runs. fillHandler first counts queued client jobs and would refuse with tooBusy past the limit. It then finds the handler for {method} and checks role and conditions.","when":{"caller":"normal"},"dir":"down","ms":1,"events":["rpc::doCommand(context, result)","fillHandler(context, handler)","JobQueue::getJobCountGE(JtClient)","getHandler(apiVersion, betaRpcApi, \"submit\")","conditionMet(handler->condition, context)","callMethod(context, method, \"submit\", result)"],"show":"context.params = { tx_blob: \"1200002280...\", command: \"submit\" }"},{"node":"rpc","text":"The JsonContext is built and rpc::doCommand runs. Because the role is unlimited, fillHandler skips the busy-server job count check. It finds the handler for {method} and checks conditions.","when":{"caller":"admin"},"dir":"down","ms":1,"events":["rpc::doCommand(context, result)","fillHandler(context, handler)","isUnlimited(context.role)","getHandler(apiVersion, betaRpcApi, \"submit\")","callMethod(context, method, \"submit\", result)"],"show":"context.params = { tx_blob: \"1200002280...\", command: \"submit\" }\ncontext.role = ADMIN"},{"node":"handlers","text":"doSubmit sets the request's load charge to medium burden and decodes the hex blob. The blob is cut short, so building the STTx throws while reading the serialized fields.","when":{"caller":["normal","admin"],"blob":"garbled"},"dir":"fail","ms":1,"events":["doSubmit(context)","strUnHex(tx_blob)","SerialIter(makeSlice(blob))","STTx::STTx(SerialIter&) throws"],"show":"{ \"error\": \"invalidTransaction\",\n  \"error_exception\": \"<serializer error text>\" }"},{"node":"rpc","text":"The error result passes back up through callMethod unchanged.","when":{"caller":["normal","admin"],"blob":"garbled"},"dir":"fail","ms":0,"quiet":true},{"node":"server","text":"processRequest adds status \"error\" and echoes the request with secrets masked. The reply is still an HTTP 200 with the error in the JSON.","when":{"caller":["normal","admin"],"blob":"garbled"},"dir":"fail","ms":1,"events":["Consumer::charge(loadType)","httpReply(200, response, output)"],"show":"{\"result\":{\"error\":\"invalidTransaction\",\"error_exception\":\"...\",\"status\":\"error\",\"request\":{\"tx_blob\":\"1200002280...\",\"command\":\"submit\"}}}"},{"node":"clients","text":"The client sees invalidTransaction. Nothing was queued or relayed.","when":{"caller":["normal","admin"],"blob":"garbled"},"dir":"fail","ms":0},{"node":"handlers","text":"doSubmit sets the request's load charge to medium burden, decodes the hex blob and builds the STTx from it.","when":{"caller":["normal","admin"],"blob":["valid","badsig"]},"dir":"down","ms":1,"events":["doSubmit(context)","strUnHex(tx_blob)","SerialIter(makeSlice(blob))","std::make_shared<STTx const>(sitTrans)"],"show":"STTx { TransactionType: Payment, Account: rExample..., Sequence: 1, Fee: 10 }"},{"node":"hashrouter","text":"checkValidity verifies the signature against the current open ledger's rules and remembers the verdict in the hash router under the transaction ID. The signature checks out.","when":{"caller":["normal","admin"],"blob":"valid"},"dir":"down","ms":2,"events":["checkValidity(getHashRouter(), *stTx, rules)"],"show":"validity = Validity::Valid"},{"node":"hashrouter","text":"checkValidity verifies the signature against the current open ledger's rules and remembers the verdict in the hash router. The signature does not match, so the result is not Valid.","when":{"caller":["normal","admin"],"blob":"badsig"},"dir":"fail","ms":2,"events":["checkValidity(getHashRouter(), *stTx, rules)"],"show":"validity != Validity::Valid"},{"node":"handlers","text":"doSubmit returns an error that says the transaction fails local checks, with the reason text. Nothing is passed to network operations.","when":{"caller":["normal","admin"],"blob":"badsig"},"dir":"fail","ms":1,"events":["doSubmit(context)"],"show":"{ \"error\": \"invalidTransaction\",\n  \"error_exception\": \"fails local checks: <reason>\" }"},{"node":"rpc","text":"The error result passes back up through callMethod unchanged.","when":{"caller":["normal","admin"],"blob":"badsig"},"dir":"fail","ms":0,"quiet":true},{"node":"server","text":"processRequest adds status \"error\" and echoes the request. The HTTP status is 200 with the error in the JSON.","when":{"caller":["normal","admin"],"blob":"badsig"},"dir":"fail","ms":1,"events":["Consumer::charge(loadType)","httpReply(200, response, output)"],"show":"{\"result\":{\"error\":\"invalidTransaction\",\"error_exception\":\"fails local checks: ...\",\"status\":\"error\"}}"},{"node":"clients","text":"The client sees invalidTransaction and must fix the signature before resubmitting.","when":{"caller":["normal","admin"],"blob":"badsig"},"dir":"fail","ms":0},{"node":"handlers","text":"A Transaction object is made and its status is NEW. The handler passes it to network operations as a local submission, with the unlimited flag set only for admin callers.","when":{"caller":["normal","admin"],"blob":"valid"},"dir":"down","ms":1,"events":["std::make_shared<Transaction>(stTx, reason, app)","getFailHard(context)","NetworkOPs::processTransaction(transaction, isUnlimited(role), true, failType)"],"show":"Transaction { status: NEW, local: true }"},{"node":"netops","text":"processTransaction first runs preProcessTransaction. It rejects a cached BAD transaction and checks the signature again with the open ledger rules. The transaction is then added to the batch and applied synchronously.","when":{"caller":["normal","admin"],"blob":"valid"},"dir":"down","ms":2,"events":["NetworkOPsImp::processTransaction(transaction, bUnlimited, bLocal=true, failType)","preProcessTransaction(transaction)","doTransactionSync(transaction, bUnlimited, failType)","NetworkOPsImp::apply(batchLock)","OpenLedger::modify(...)"],"show":"TransactionStatus { local: true, admin: false, failType: No }"},{"node":"txq","text":"For each transaction in the batch, apply hands the open view to TxQ::apply. The queue first preflights the transaction and then tries to apply it directly. The fee level meets the current open ledger cost, so it goes straight in.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":1,"events":["TxQ::apply(app, view, tx, flags, j)","TxQApplyImpl::apply()","TxQ::tryDirectApply(app, view, tx, flags, j)"],"show":"fee level paid >= open ledger fee level"},{"node":"apply","text":"The apply entry point runs the transaction pipeline against the open view.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":1,"events":["xrpl::apply(registry, view, tx, flags, j)"]},{"node":"preflight","text":"Preflight checks format, flags and fields using the Payment transactor's own rules. No ledger state is needed.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":1,"events":["preflight(app, rules, tx, flags, j)"],"show":"preflight ter = tesSUCCESS"},{"node":"preclaim","text":"Preclaim reads the open ledger. The account exists, the sequence number is the next one, and the balance covers the fee and amount.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":2,"events":["preclaim(preflightResult, app, view)"],"show":"preclaim ter = tesSUCCESS"},{"node":"doapply","text":"The fee is charged and the transactor's doApply moves the funds inside an ApplyView.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":3,"events":["doApply(preclaimResult, app, view)","Transactor::operator()()"],"show":"Fee 10 drops charged, Sequence 1 -> 2, balances updated"},{"node":"invariants","text":"Invariant checks confirm that no XRP was created and the changed ledger entries are valid. They pass, so the changes are kept in the open ledger.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"up","ms":2,"events":["Transactor::checkInvariants(result, fee, InvariantScope::Full)"],"show":"result = tesSUCCESS, applied = true"},{"node":"netops","text":"The result is tesSUCCESS. The transaction is published to proposed-transaction subscribers, marked INCLUDED, and kept in the local transaction list. Its hash is checked so it is relayed only once.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"up","ms":2,"events":["reportFeeChange()","pubProposedTransaction(newOL, sttx, tesSUCCESS)","Transaction::setStatus(TransStatus::INCLUDED)","LocalTxs::pushBack(ledgerIndex, sttx)","HashRouter::shouldRelay(txID)"],"show":"status = INCLUDED, submitResult { applied, kept }"},{"node":"overlay","text":"The transaction is serialized into a TMTransaction message and relayed to peers.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"down","ms":3,"events":["Overlay::relay(txID, TMTransaction, toSkip)","Transaction::setBroadcast()"],"show":"TMTransaction { status: tsCURRENT, deferred: false }"},{"node":"txq","text":"The fee level is below what the open ledger now requires. The transaction is not applied directly, so TxQ checks it can be held. The account has no blocking queue entries, so it is preflighted and preclaimed.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"down","ms":1,"events":["TxQ::apply(app, view, tx, flags, j)","TxQApplyImpl::apply()","TxQ::tryDirectApply(app, view, tx, flags, j)","TxQApplyImpl::applyImplPrelock()"],"show":"fee level paid < escalated open ledger fee level"},{"node":"preflight","text":"The queue's preflight of the transaction passes, since format and signatures are fine.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"down","ms":1,"events":["preflight(app, view.rules(), tx, flags, j)"],"show":"preflight ter = tesSUCCESS"},{"node":"preclaim","text":"Preclaim reads ledger state and finds the transaction would claim a fee in a later ledger, so it is allowed into the queue.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"down","ms":2,"events":["preclaim(preflightRes, app, view)"],"show":"preclaim ter = tesSUCCESS"},{"node":"txq","text":"The transaction is stored in the queue, in the account's list, and TxQ returns terQUEUED. It is not applied to the open ledger.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"up","ms":1,"events":["TxQ::TxQApplyImpl::apply -> ApplyResult{terQUEUED, false}"],"show":"result = terQUEUED, applied = false"},{"node":"netops","text":"The result is terQUEUED. The transaction is marked HELD and added to the held transactions so it can be put back if it is dropped from the queue. It is also kept locally and relayed marked as deferred.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"up","ms":2,"events":["Transaction::setStatus(TransStatus::HELD)","LedgerMaster::addHeldTransaction(transaction)","Transaction::setQueued()","LocalTxs::pushBack(ledgerIndex, sttx)","HashRouter::shouldRelay(txID)"],"show":"status = HELD, submitResult { queued, kept }"},{"node":"overlay","text":"The queued transaction is relayed to peers with the deferred flag set.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"down","ms":3,"events":["Overlay::relay(txID, TMTransaction, toSkip)","Transaction::setBroadcast()"],"show":"TMTransaction { status: tsCURRENT, deferred: true }"},{"node":"txq","text":"TxQ preflights the transaction and tries a direct apply.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"down","ms":1,"events":["TxQ::apply(app, view, tx, flags, j)","TxQApplyImpl::apply()","TxQ::tryDirectApply(app, view, tx, flags, j)"]},{"node":"apply","text":"The apply entry point runs the pipeline against the open view.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"down","ms":1,"events":["xrpl::apply(registry, view, tx, flags, j)"]},{"node":"preflight","text":"Preflight passes, as the transaction is well formed.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"down","ms":1,"events":["preflight(app, rules, tx, flags, j)"],"show":"preflight ter = tesSUCCESS"},{"node":"preclaim","text":"Preclaim compares the transaction's Sequence with the account's current one in the ledger. The number was already used, so it stops with tefPAST_SEQ and the ledger is not changed.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"fail","ms":2,"events":["preclaim(preflightResult, app, view)"],"show":"tx.Sequence 1 < account.Sequence 2 -> tefPAST_SEQ"},{"node":"netops","text":"The result is tefPAST_SEQ, so the transaction is marked OBSOLETE. It is not applied, queued or relayed. With fail_hard unset, it is still added to the local transaction list.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq","fail_hard":"no"},"dir":"fail","ms":2,"events":["Transaction::setStatus(TransStatus::OBSOLETE)","LocalTxs::pushBack(ledgerIndex, sttx)"],"show":"status = OBSOLETE, submitResult { kept }"},{"node":"netops","text":"The result is tefPAST_SEQ, so the transaction is marked OBSOLETE. Because fail_hard is true and the result is not success, it is not added to the local transaction list and is not relayed.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq","fail_hard":"yes"},"dir":"fail","ms":2,"events":["Transaction::setStatus(TransStatus::OBSOLETE)","enforceFailHard = (failType == FailHard::Yes && !isTesSuccess(result))"],"show":"status = OBSOLETE, submitResult { }"},{"node":"handlers","text":"Back in doSubmit, the transaction JSON, blob and tx result are written to the reply. The submit flags and the account's next sequence numbers and open ledger cost are included.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"applied"},"dir":"up","ms":1,"events":["Transaction::getJson(JsonOptions::Values::None)","transResultInfo(result, sToken, sHuman)","Transaction::getSubmitResult()","Transaction::getCurrentLedgerState()"],"show":"{ \"engine_result\": \"tesSUCCESS\", \"engine_result_code\": 0,\n  \"accepted\": true, \"applied\": true, \"broadcast\": true,\n  \"queued\": false, \"kept\": true,\n  \"account_sequence_next\": 2, \"open_ledger_cost\": \"10\", ... }"},{"node":"handlers","text":"Back in doSubmit, the transaction JSON, blob and tx result are written to the reply. It shows the transaction was accepted but only queued.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"queued"},"dir":"up","ms":1,"events":["Transaction::getJson(JsonOptions::Values::None)","transResultInfo(result, sToken, sHuman)","Transaction::getSubmitResult()"],"show":"{ \"engine_result\": \"terQUEUED\", \"engine_result_code\": -89,\n  \"accepted\": true, \"applied\": false, \"broadcast\": true,\n  \"queued\": true, \"kept\": true, ... }"},{"node":"handlers","text":"Back in doSubmit, the reply holds the tefPAST_SEQ result. accepted, applied, broadcast and queued are all false.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq","fail_hard":"no"},"dir":"fail","ms":1,"events":["transResultInfo(result, sToken, sHuman)","Transaction::getSubmitResult()"],"show":"{ \"engine_result\": \"tefPAST_SEQ\", \"engine_result_code\": -190,\n  \"accepted\": false, \"applied\": false, \"broadcast\": false,\n  \"queued\": false, \"kept\": true, ... }"},{"node":"handlers","text":"Back in doSubmit, the reply holds the tefPAST_SEQ result. Nothing was accepted, and kept is false because fail_hard stopped the local keep.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq","fail_hard":"yes"},"dir":"fail","ms":1,"events":["transResultInfo(result, sToken, sHuman)","Transaction::getSubmitResult()"],"show":"{ \"engine_result\": \"tefPAST_SEQ\", \"engine_result_code\": -190,\n  \"accepted\": false, \"applied\": false, \"broadcast\": false,\n  \"queued\": false, \"kept\": false, ... }"},{"node":"rpc","text":"callMethod logs the call to the performance log and returns the result.","when":{"caller":["normal","admin"],"blob":"valid","outcome":["applied","queued"]},"dir":"up","ms":0,"quiet":true,"events":["PerfLog::rpcFinish(\"submit\", id)"]},{"node":"rpc","text":"callMethod logs the call to the performance log and returns the result.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"fail","ms":0,"quiet":true,"events":["PerfLog::rpcFinish(\"submit\", id)"]},{"node":"server","text":"processRequest charges the caller for the work, adds status \"success\" and replies with HTTP 200.","when":{"caller":["normal","admin"],"blob":"valid","outcome":["applied","queued"]},"dir":"up","ms":1,"events":["Consumer::charge(kFeeMediumBurdenRpc)","httpReply(200, response, output)"],"show":"HTTP/1.1 200 OK\n\n{\"result\":{\"engine_result\":\"...\",\"status\":\"success\", ...}}"},{"node":"server","text":"processRequest charges the caller for the work and replies with HTTP 200. The JSON carries a failure result code, not an RPC error.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"fail","ms":1,"events":["Consumer::charge(kFeeMediumBurdenRpc)","httpReply(200, response, output)"],"show":"HTTP/1.1 200 OK\n\n{\"result\":{\"engine_result\":\"tefPAST_SEQ\",\"status\":\"success\", ...}}"},{"node":"clients","text":"The client reads the result. The transaction is in the open ledger or queued, and was sent on to peers for a validated ledger later.","when":{"caller":["normal","admin"],"blob":"valid","outcome":["applied","queued"]},"dir":"up","ms":0},{"node":"clients","text":"The client reads tefPAST_SEQ and learns that this sequence number is already used. It must rebuild the transaction with a fresh sequence.","when":{"caller":["normal","admin"],"blob":"valid","outcome":"pastseq"},"dir":"fail","ms":0}]},"markdown":"# How xrpld works\n\nxrpld is the server software for the XRP Ledger, a peer-to-peer network that keeps a shared ledger of accounts, tokens and offers. A node connects to other peers, collects submitted transactions, agrees with its validators on the next set of transactions through consensus, applies them to the ledger, and stores the result. Clients talk to it over JSON-RPC, WebSocket or gRPC. The protocol and transaction logic live in the libxrpl library, and the server application is built on top of it.\n\n## Callers and network\nOutside parties that send requests, transactions and ledger data to the node.\n\n- **API clients**: Wallets, apps and tools that submit transactions and query the ledger over JSON-RPC, WebSocket or gRPC.\n- **Network peers**: Other xrpld nodes and validators that relay transactions, proposals, validations and ledger data.\n\n## Public API\nNetwork listeners and request dispatchers that accept client and peer traffic.\n\n- **HTTP/WS server**: Listens on configured ports and runs HTTP and WebSocket sessions, TLS included, handing each request to the RPC layer. Files: `include/xrpl/server/Server.h`, `include/xrpl/server/detail/Door.h`, `include/xrpl/server/Port.h`, `src/xrpld/rpc/ServerHandler.h`.\n- **RPC dispatch**: Builds a request context, checks the caller's role and rate limits, looks up the handler by method name and runs it on the job queue. Files: `src/xrpld/rpc/detail/RPCHandler.cpp`, `src/xrpld/rpc/detail/Handler.cpp`, `src/xrpld/rpc/Context.h`, `src/xrpld/rpc/Role.h`.\n- **RPC handlers**: One handler per RPC method, grouped by area such as account, ledger, orderbook, transaction, subscribe and admin. Files: `src/xrpld/rpc/handlers/Handlers.h`, `src/xrpld/rpc/handlers/transaction/Submit.cpp`, `src/xrpld/rpc/handlers/subscribe/Subscribe.cpp`, `src/xrpld/rpc/detail/RPCHelpers.h`.\n- **gRPC server**: Serves a gRPC interface next to the JSON-RPC one, when it is configured. Files: `src/xrpld/app/main/GRPCServer.h`, `src/xrpld/app/main/GRPCServer.cpp`, `src/xrpld/rpc/GRPCHandlers.h`.\n- **Peer overlay**: Manages peer connections, the handshake, protocol messages and relay of transactions, proposals and validations between nodes. Files: `src/xrpld/overlay/Overlay.h`, `src/xrpld/overlay/detail/OverlayImpl.cpp`, `src/xrpld/overlay/detail/PeerImp.cpp`, `src/xrpld/overlay/Peer.h`.\n- **Peer discovery**: Decides which peers to connect to, tracks slots and keeps a cache of known endpoints. Files: `include/xrpl/peerfinder/PeerfinderManager.h`, `src/libxrpl/peerfinder/PeerfinderManager.cpp`, `src/libxrpl/peerfinder/Bootcache.cpp`, `src/xrpld/peerfinder/PeerfinderManager.h`.\n\n## Application core\nThe Application object and the services that run the node: transaction intake, consensus, ledger management and validator trust.\n\n- **Application**: Main parses the command line and config, then builds the Application object that owns and wires together all services. Most components keep a reference to it. Files: `src/xrpld/app/main/Main.cpp`, `src/xrpld/app/main/Application.h`, `src/xrpld/app/main/Application.cpp`, `src/xrpld/core/Config.h`.\n- **Network operations**: The hub that accepts submitted and relayed transactions, tracks the node's operating mode, drives consensus rounds and publishes subscription events. Files: `include/xrpl/server/NetworkOPs.h`, `src/xrpld/app/misc/NetworkOPs.cpp`, `src/xrpld/app/misc/make_NetworkOPs.h`.\n- **Transaction queue**: Holds transactions that do not fit in the open ledger at the current fee level and applies fee escalation. Files: `src/xrpld/app/misc/TxQ.h`, `src/xrpld/app/misc/detail/TxQ.cpp`, `src/xrpld/app/misc/FeeEscalation.md`.\n- **Consensus**: A generic consensus algorithm in libxrpl plus the RCL adaptor in xrpld. Validators exchange proposals, resolve disputed transactions and agree on the next ledger. Files: `include/xrpl/consensus/Consensus.h`, `src/libxrpl/consensus/Consensus.cpp`, `src/xrpld/app/consensus/RCLConsensus.h`, `src/xrpld/app/consensus/RCLConsensus.cpp`.\n- **Validator trust**: Keeps the trusted validator list from config and published lists, verifies manifests and collects validations from trusted validators. Files: `src/xrpld/app/misc/ValidatorList.h`, `src/xrpld/app/misc/detail/ValidatorList.cpp`, `include/xrpl/server/Manifest.h`, `src/xrpld/app/consensus/RCLValidations.h`.\n- **Ledger master**: Tracks the open, closed and validated ledgers, advances the validated ledger and keeps ledger history. Files: `src/xrpld/app/ledger/LedgerMaster.h`, `src/xrpld/app/ledger/detail/LedgerMaster.cpp`, `src/xrpld/app/ledger/OpenLedger.h`, `src/xrpld/app/ledger/detail/BuildLedger.cpp`.\n- **Ledger acquisition**: Fetches missing ledgers and transaction sets from peers, and replays ledgers by delta, so the node can catch up with the network. Files: `src/xrpld/app/ledger/InboundLedger.h`, `src/xrpld/app/ledger/detail/InboundLedgers.cpp`, `src/xrpld/app/ledger/detail/TransactionAcquire.h`, `src/xrpld/app/ledger/LedgerReplayer.h`.\n- **Amendments**: Tracks which protocol amendments are enabled and votes on pending ones. Transaction behavior changes are gated behind them. Files: `include/xrpl/ledger/AmendmentTable.h`, `src/xrpld/app/misc/detail/AmendmentTable.cpp`, `include/xrpl/protocol/Feature.h`, `include/xrpl/protocol/detail/features.macro`.\n\n## Transaction engine\nThe pipeline that checks and applies one transaction to a ledger view, in fixed order.\n\n- **Apply entry**: The entry points that take a signed transaction and a view and run the transaction pipeline, returning a result code and whether it was applied. Files: `include/xrpl/tx/apply.h`, `src/libxrpl/tx/apply.cpp`, `include/xrpl/tx/applySteps.h`, `src/libxrpl/tx/applySteps.cpp`.\n- **Preflight**: Checks the transaction on its own: format, flags, fields and signatures. It needs no ledger state, so its result can be cached. Files: `include/xrpl/tx/Transactor.h`, `src/libxrpl/tx/Transactor.cpp`.\n- **Preclaim**: Reads the current ledger to check the account, sequence number, fee and type-specific conditions without changing anything. Files: `include/xrpl/tx/Transactor.h`, `src/libxrpl/tx/Transactor.cpp`, `include/xrpl/tx/ApplyContext.h`.\n- **Do apply**: Charges the fee, then runs the transactor's own doApply to change ledger entries inside an ApplyView. Files: `src/libxrpl/tx/Transactor.cpp`, `src/libxrpl/tx/ApplyContext.cpp`, `include/xrpl/ledger/ApplyViewImpl.h`.\n- **Invariant checks**: After a transaction runs, checks rules such as no XRP created and valid ledger entries. A violation turns the result into a failure. Files: `include/xrpl/tx/invariants/InvariantCheck.h`, `include/xrpl/tx/invariants/InvariantRunner.h`, `src/libxrpl/tx/invariants/InvariantRunner.cpp`, `src/libxrpl/tx/invariants/InvariantCheck.cpp`.\n- **Transactors**: One class per transaction type, such as Payment, OfferCreate or EscrowCreate, grouped by feature area. Each derives from Transactor and overrides the pipeline steps. Files: `include/xrpl/tx/transactors/account/AccountSet.h`, `src/libxrpl/tx/transactors/account/AccountSet.cpp`, `include/xrpl/tx/transactors/dex/OfferCreate.h`, `include/xrpl/tx/transactors/escrow/EscrowCreate.h`.\n- **Payment paths**: The payment engine that finds and executes paths through trust lines, order books and AMMs, in steps with quality tracking. Files: `include/xrpl/tx/paths/Flow.h`, `src/libxrpl/tx/paths/Flow.cpp`, `include/xrpl/tx/paths/detail/Steps.h`, `include/xrpl/tx/paths/RippleCalc.h`.\n\n## Ledger and protocol\nLedger data structures, views and the protocol types they are built from.\n\n- **Ledger views**: Layered read and write views over a ledger: ReadView, OpenView, ApplyView and Sandbox. Changes made to a view are only committed when they succeed. Files: `include/xrpl/ledger/ReadView.h`, `include/xrpl/ledger/ApplyView.h`, `include/xrpl/ledger/OpenView.h`, `include/xrpl/ledger/Sandbox.h`.\n- **Ledger**: A ledger is a header plus a state tree and a transaction tree. It can be open, closed or validated. Files: `include/xrpl/ledger/Ledger.h`, `src/libxrpl/ledger/Ledger.cpp`, `include/xrpl/protocol/LedgerHeader.h`.\n- **Ledger helpers**: Shared functions that transactors and invariants use to read and edit common ledger objects such as accounts, directories, trust lines and tokens. Files: `include/xrpl/ledger/helpers/AccountRootHelpers.h`, `include/xrpl/ledger/helpers/DirectoryHelpers.h`, `include/xrpl/ledger/helpers/TokenHelpers.h`, `include/xrpl/ledger/View.h`.\n- **Protocol types**: Serialized object types, fields, amounts, keys, signing, error codes and the tables of transaction and ledger entry formats. Files: `include/xrpl/protocol/STTx.h`, `include/xrpl/protocol/SField.h`, `include/xrpl/protocol/TER.h`, `include/xrpl/protocol/detail/transactions.macro`.\n- **Protocol codegen**: Python scripts that read the transaction and ledger entry macro files and generate typed wrapper classes in protocol_autogen. Files: `cmake/scripts/codegen/generate_tx_classes.py`, `cmake/scripts/codegen/generate_ledger_classes.py`, `include/xrpl/protocol/detail/ledger_entries.macro`, `include/xrpl/protocol_autogen/TransactionBase.h`.\n\n## Storage and infrastructure\nPersistent stores, job scheduling, rate limiting and metrics.\n\n- **SHAMap**: A Merkle tree that holds ledger state and transactions, with hashing, diffing and sync support. Nodes are read from and written to the node store. Files: `include/xrpl/shamap/SHAMap.h`, `src/libxrpl/shamap/SHAMap.cpp`, `src/libxrpl/shamap/SHAMapSync.cpp`, `src/xrpld/shamap/NodeFamily.h`.\n- **Node store**: Key-value storage for ledger tree nodes, with pluggable backends such as NuDB, RocksDB and memory. Files: `include/xrpl/nodestore/Database.h`, `include/xrpl/nodestore/Backend.h`, `src/libxrpl/nodestore/backend/NuDBFactory.cpp`, `src/libxrpl/nodestore/DatabaseNodeImp.cpp`.\n- **History rotation**: Runs online deletion by rotating node store databases so old ledger history is dropped without stopping the node. Files: `src/xrpld/app/misc/SHAMapStore.h`, `src/xrpld/app/misc/SHAMapStoreImp.cpp`, `include/xrpl/nodestore/DatabaseRotating.h`.\n- **SQL databases**: SQLite databases accessed through SOCI that hold ledger and transaction indexes for lookups, plus wallet and peer data. Files: `include/xrpl/rdb/DatabaseCon.h`, `include/xrpl/rdb/RelationalDatabase.h`, `src/xrpld/app/rdb/backend/SQLiteDatabase.h`, `src/libxrpl/rdb/DatabaseCon.cpp`.\n- **Job queue**: A prioritized thread pool. RPC calls, consensus work and ledger tasks are queued here as typed jobs. Files: `include/xrpl/core/JobQueue.h`, `src/libxrpl/core/detail/JobQueue.cpp`, `include/xrpl/core/Job.h`, `include/xrpl/core/ServiceRegistry.h`.\n- **Hash router**: Remembers recently seen transactions and messages so they are not processed or relayed twice, and holds flags from earlier checks. Files: `include/xrpl/core/HashRouter.h`, `src/libxrpl/core/HashRouter.cpp`, `src/xrpld/app/misc/detail/setup_HashRouter.cpp`.\n- **Resource limits**: Charges peers and clients for expensive requests and blocks or disconnects abusive ones. Files: `include/xrpl/resource/ResourceManager.h`, `include/xrpl/resource/Consumer.h`, `src/libxrpl/resource/ResourceManager.cpp`, `include/xrpl/resource/Fees.h`.\n- **Metrics and logs**: Insight metrics sent to StatsD, the performance log and the Journal logging interface. Files: `include/xrpl/beast/insight/Collector.h`, `src/xrpld/app/main/CollectorManager.h`, `include/xrpl/core/PerfLog.h`, `include/xrpl/beast/utility/Journal.h`.\n\n## Walkthroughs\n\n### Submit a transaction over RPC\n1. **API clients**: A client sends a signed transaction with the submit method over HTTP or WebSocket.\n2. **HTTP/WS server**: The listener reads the request on its port and passes it to the server handler.\n3. **RPC dispatch**: The dispatcher builds a context, checks role and resource charges, and finds the handler by method name.\n4. **RPC handlers**: The submit handler parses and checks the transaction, then passes it to network operations.\n5. **Network operations**: Network operations checks the hash router for duplicates, then queues the transaction for processing.\n6. **Apply entry**: The transaction is run against the open ledger through the apply entry points.\n7. **Preflight**: Preflight checks the transaction's format, fields and signatures.\n8. **Preclaim**: Preclaim checks the account, sequence and fee against current ledger state.\n9. **Do apply**: The fee is charged and the transactor changes ledger entries in a view.\n10. **Invariant checks**: Invariant checks confirm the changes are legal before they are kept.\n11. **Transaction queue**: If the open ledger cannot take it at the current fee level, the transaction waits in the queue.\n12. **Peer overlay**: A transaction that is accepted is relayed to peers.\n\n### Agree on and apply the next ledger\n1. **Network operations**: Network operations starts a consensus round when the ledger is ready to close.\n2. **Consensus**: The consensus engine proposes the node's candidate transaction set and exchanges positions with trusted validators.\n3. **Validator trust**: Only proposals and validations from trusted validators count toward agreement.\n4. **Ledger acquisition**: If peers propose a transaction set the node lacks, it is fetched from them.\n5. **Ledger master**: Once agreed, the ledger master builds the new ledger by applying the set to the previous closed ledger.\n6. **Apply entry**: Each transaction in the canonical order goes through the transaction pipeline.\n7. **SHAMap**: The state and transaction trees are updated and hashed to produce the new ledger hashes.\n8. **Node store**: The new tree nodes are written to the node store.\n9. **SQL databases**: Ledger and transaction indexes are saved to the SQL database for later queries.\n\n### Start the server and catch up\n1. **Application**: Main reads the command line and config file, then constructs the Application and starts its services.\n2. **Node store**: The node store and SQL databases are opened, and the latest stored ledger is loaded.\n3. **Job queue**: The job queue starts its worker threads.\n4. **HTTP/WS server**: RPC and WebSocket ports begin listening.\n5. **Peer discovery**: Peer discovery picks addresses from config, the boot cache and other sources.\n6. **Peer overlay**: The overlay connects to peers and runs the handshake with each.\n7. **Ledger acquisition**: The node requests the ledgers it is missing from its peers.\n8. **Ledger master**: When a recent validated ledger is in hand, the node joins normal operation.\n\n### Receive a transaction from a peer\n1. **Network peers**: A peer sends a transaction message.\n2. **Peer overlay**: The peer connection decodes the message and charges the peer for the work.\n3. **Hash router**: The hash router drops transactions the node has already seen.\n4. **Network operations**: Network operations submits the transaction for checking and application.\n5. **Apply entry**: The transaction runs through preflight, preclaim and apply against the open ledger.\n6. **Peer overlay**: If it is accepted, it is relayed on to other peers.\n\n## Connections\n\n- API clients -> HTTP/WS server: HTTP, WebSocket\n- Application -> HTTP/WS server: creates\n- Application -> Network operations: creates\n- Application -> Peer overlay: creates\n- RPC dispatch -> RPC handlers: dispatches\n- RPC dispatch -> Job queue: runs on\n- RPC handlers -> Network operations: submit\n- RPC handlers -> Ledger master: read ledgers\n- RPC handlers -> SQL databases: history queries\n- Peer overlay -> Network operations: relays to\n- Peer overlay -> Ledger acquisition: serves data\n- Consensus -> Ledger master: builds ledger\n- Consensus -> Ledger acquisition: fetch tx sets\n- Consensus -> Peer overlay: broadcast\n- Ledger master -> Apply entry: applies tx set\n- Ledger master -> SQL databases: saves index\n- Ledger acquisition -> Peer overlay: requests\n- Preflight -> Transactors: calls overrides\n- Transactors -> Amendments: feature gates\n- Protocol codegen -> Protocol types: generates from\n- History rotation -> Node store: rotates\n\n## Where to make a change\n\n- Add a new transaction type: Protocol types, Transactors, Protocol codegen, Amendments, Ledger helpers\n- Change the behavior of an existing transaction: Transactors, Amendments, Ledger helpers, Invariant checks\n- Add an RPC method: RPC handlers, RPC dispatch, Protocol types\n- Add or change an invariant check: Invariant checks, Ledger helpers\n- Tune fee escalation or queue limits: Transaction queue, Network operations\n- Change consensus or validation behavior: Consensus, Validator trust, Ledger master\n- Add a node store backend or change storage: Node store, History rotation, SHAMap\n- Change peer messaging or connection rules: Peer overlay, Peer discovery, Resource limits\n\n"};
+(function () {
+  const NS = "http://www.w3.org/2000/svg";
+  const sv = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs || {}) e.setAttribute(k, attrs[k]); if (parent) parent.append(e); return e; };
+  const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+  const nodes = ARCH.nodes, byId = new Map(nodes.map(n => [n.id, n]));
+  const groups = ARCH.groups.filter(g => nodes.some(n => n.group === g.id));
+  const edges = ARCH.edges.filter(e => byId.has(e.from) && byId.has(e.to));
+  const flows = ARCH.flows || [];
+  const base = p => p.split("/").pop();
+
+  document.getElementById("title").textContent = ARCH.name;
+  document.getElementById("summary").textContent = ARCH.summary || "";
+
+  /* ---------- Layout: one lane per group, top to bottom ---------- */
+  const NW = 150, NH = 56, GAP = 24, LANE_H = 116, LABEL_W = 0, PAD = 20;
+  const lanes = groups.map(g => nodes.filter(n => n.group === g.id));
+  const laneIndex = new Map(); lanes.forEach((l, i) => l.forEach(n => laneIndex.set(n.id, i)));
+  const intra = new Set(); edges.forEach(e => { if (laneIndex.get(e.from) === laneIndex.get(e.to)) intra.add(laneIndex.get(e.from)); });
+  const widest = Math.max(...lanes.map(l => l.length * NW + (l.length - 1) * GAP));
+  const W = LABEL_W + widest + PAD * 2, H = lanes.length * LANE_H + PAD;
+  const pos = new Map();
+  const place = (lane, i) => {
+    const w = lane.length * NW + (lane.length - 1) * GAP, x0 = LABEL_W + PAD + (widest - w) / 2;
+    lane.forEach((n, k) => pos.set(n.id, { x: x0 + k * (NW + GAP), y: i * LANE_H + (LANE_H - NH) / 2 + PAD / 2 + 6 }));
+  };
+  lanes.forEach(place);
+  // Order lanes without internal chains by where their neighbours sit, to cut crossings.
+  for (let iter = 0; iter < 3; iter++) {
+    lanes.forEach((lane, i) => {
+      if (intra.has(i) || lane.length < 2) return;
+      const bary = n => {
+        const xs = edges.filter(e => e.from === n.id || e.to === n.id).map(e => pos.get(e.from === n.id ? e.to : e.from).x);
+        return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : pos.get(n.id).x;
+      };
+      const order = lane.map(n => [n, bary(n)]).sort((a, b) => a[1] - b[1]).map(x => x[0]);
+      lane.splice(0, lane.length, ...order); place(lane, i);
+    });
+  }
+
+  const root = document.getElementById("svg");
+  root.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const defs = sv("defs", {}, root);
+  ["mk", "mk-on", "mk-near", "mk-up", "mk-fail"].forEach(id => {
+    const m = sv("marker", { id, class: id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" }, defs);
+    sv("path", { d: "M0,0 L10,5 L0,10 z" }, m);
+  });
+  groups.forEach((g, i) => {
+    if (i % 2 === 0) sv("rect", { class: "lane-bg", x: 0, y: i * LANE_H + PAD / 2, width: W, height: LANE_H }, root);
+    const t = sv("text", { class: "lane-lab", x: W - PAD, y: i * LANE_H + PAD / 2 + 17, "text-anchor": "end" }, root);
+    t.textContent = g.label.toUpperCase();
+  });
+
+  const eLayer = sv("g", {}, root), lLayer = sv("g", {}, root), nLayer = sv("g", {}, root);
+  const edgeEls = edges.map(e => {
+    const a = pos.get(e.from), b = pos.get(e.to), la = laneIndex.get(e.from), lb = laneIndex.get(e.to);
+    let d;
+    if (la === lb) {
+      const ax = a.x < b.x ? a.x + NW : a.x, bx = a.x < b.x ? b.x : b.x + NW, y = a.y + NH / 2;
+      const adjacent = Math.abs(a.x - b.x) <= NW + GAP + 1;
+      d = adjacent ? `M${ax},${y} L${bx},${y}` : `M${a.x + NW / 2},${a.y + NH} C${a.x + NW / 2},${a.y + NH + 34} ${b.x + NW / 2},${b.y + NH + 34} ${b.x + NW / 2},${b.y + NH}`;
+    } else {
+      const down = lb > la;
+      const x1 = a.x + NW / 2, y1 = down ? a.y + NH : a.y, x2 = b.x + NW / 2, y2 = down ? b.y : b.y + NH;
+      const my = (y1 + y2) / 2;
+      d = `M${x1},${y1} C${x1},${my} ${x2},${my} ${x2},${y2}`;
+    }
+    const addon = byId.get(e.from).kind === "addon";
+    const p = sv("path", { d, class: "e" + (addon ? " addon" : ""), "marker-end": "url(#mk)" }, eLayer);
+    let lab = null;
+    const shortHop = la === lb && Math.abs(a.x - b.x) <= NW + GAP + 1;
+    if (e.label && !shortHop) {
+      lab = sv("g", { class: "elab" }, lLayer);
+      lab.dataset.pending = "1";
+    }
+    return { e, p, lab };
+  });
+
+  const nodeEls = new Map();
+  nodes.forEach(n => {
+    const { x, y } = pos.get(n.id);
+    const g = sv("g", { class: `n ${n.kind || "core"}`, transform: `translate(${x},${y})`, tabindex: 0, role: "button", "aria-label": n.label }, nLayer);
+    sv("rect", { class: "box", width: NW, height: NH, rx: 7 }, g);
+    const t = sv("text", { class: "t", x: 12, y: 25 }, g); t.textContent = n.label;
+    let sub = "";
+    if (n.group === "pipeline" && n.kind === "step") sub = "step " + (lanes[laneIndex.get(n.id)].indexOf(n) + 1);
+    else if (n.files && n.files.length) sub = base(n.files[0]) + (n.files.length > 1 ? ` +${n.files.length - 1}` : "");
+    else if (n.kind === "external") sub = "outside this repo";
+    const s = sv("text", { class: "s", x: 12, y: 44 }, g); s.textContent = sub;
+    // shrink long labels to fit
+    requestAnimationFrame(() => { [t, s].forEach(tx => { try { const bw = tx.getComputedTextLength(); if (bw > NW - 20) tx.setAttribute("textLength", NW - 20), tx.setAttribute("lengthAdjust", "spacingAndGlyphs"); } catch (e) {} }); });
+    const badge = sv("g", { class: "badge", transform: "translate(-8,-8)" }, g); badge.style.display = "none";
+    sv("circle", { r: 11, cx: 0, cy: 0 }, badge); const bt = sv("text", { x: 0, y: 4, "text-anchor": "middle" }, badge);
+    nodeEls.set(n.id, { g, badge, bt });
+    g.addEventListener("click", ev => { ev.stopPropagation(); showNode(n.id); });
+    g.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); showNode(n.id); } });
+  });
+  root.addEventListener("click", () => restore());
+
+  // Edge labels need path geometry, so place them once laid out.
+  requestAnimationFrame(() => {
+    edgeEls.forEach(o => {
+      if (!o.lab) return;
+      const L = o.p.getTotalLength(), pt = o.p.getPointAtLength(L / 2);
+      const t = sv("text", { x: pt.x, y: pt.y + 4, "text-anchor": "middle" }, o.lab); t.textContent = o.e.label;
+      const bb = t.getBBox();
+      const r = sv("rect", { x: bb.x - 4, y: bb.y - 1, width: bb.width + 8, height: bb.height + 2, rx: 3 }, null);
+      o.lab.insertBefore(r, t);
+    });
+  });
+
+  /* ---------- State ---------- */
+  const panel = document.getElementById("panel");
+  let flow = null, cur = 0, mode = "overview";
+  function clearMarks() {
+    root.classList.remove("dim", "live");
+    nodeEls.forEach(o => { o.g.classList.remove("sel", "inflow", "cur", "near", "up", "fail"); o.badge.style.display = "none"; });
+    edgeEls.forEach(o => { o.p.classList.remove("on", "near", "up", "fail"); o.p.setAttribute("marker-end", "url(#mk)"); if (o.lab) o.lab.classList.remove("on", "near", "up", "fail"); });
+  }
+  function restore() { if (mode === "live") showLive(); else if (flow) showFlow(flow.id, cur); else showOverview(); }
+  const mark = (o, cls) => { o.p.classList.add(cls); o.p.setAttribute("marker-end", `url(#mk-${cls})`); if (o.lab) o.lab.classList.add(cls); };
+
+  function setFlowButtons() { document.querySelectorAll("#flows button").forEach(b => b.setAttribute("aria-pressed", String(flow ? b.dataset.id === flow.id : (mode === "overview" && b.dataset.id === "")))); }
+
+  function showFlow(id, step) {
+    stopRun(); mode = "flow";
+    flow = flows.find(f => f.id === id); cur = Math.max(0, Math.min(step || 0, flow.steps.length - 1));
+    setFlowButtons(); clearMarks(); root.classList.add("dim");
+    const seq = flow.steps.map(s => s.node);
+    const nums = new Map(); seq.forEach((id, i) => nums.set(id, (nums.get(id) ? nums.get(id) + "," : "") + (i + 1)));
+    nums.forEach((v, id) => { const o = nodeEls.get(id); o.g.classList.add("inflow"); o.badge.style.display = ""; o.bt.textContent = v; });
+    for (let i = 0; i + 1 < seq.length; i++) edgeEls.forEach(o => { if ((o.e.from === seq[i] && o.e.to === seq[i + 1]) || (o.e.to === seq[i] && o.e.from === seq[i + 1])) mark(o, "on"); });
+    nodeEls.get(seq[cur]).g.classList.add("cur");
+
+    panel.replaceChildren();
+    panel.append(el("div", "kicker", "Walkthrough"), el("h2", null, flow.title));
+    const ol = el("ol", "steps");
+    flow.steps.forEach((s, i) => {
+      const li = el("li"), b = el("button"); b.type = "button"; b.setAttribute("aria-current", String(i === cur));
+      b.append(el("span", "num", i + 1), el("span", "nm", byId.get(s.node).label), el("span", "tx", s.text));
+      b.addEventListener("click", () => showFlow(flow.id, i));
+      li.append(b); ol.append(li);
+    });
+    panel.append(ol);
+    const nav = el("div", "nav");
+    const prev = el("button", "btn", "Previous"), next = el("button", "btn primary", cur === flow.steps.length - 1 ? "Start over" : "Next step");
+    prev.type = next.type = "button"; prev.disabled = cur === 0;
+    prev.addEventListener("click", () => showFlow(flow.id, cur - 1));
+    next.addEventListener("click", () => showFlow(flow.id, cur === flow.steps.length - 1 ? 0 : cur + 1));
+    const more = el("button", "btn", "Details"); more.type = "button"; more.addEventListener("click", () => showNode(seq[cur], true));
+    nav.append(prev, next, more); panel.append(nav);
+  }
+
+  function showNode(id, fromFlow) {
+    const n = byId.get(id);
+    if (mode !== "live") clearMarks();
+    root.classList.add("dim");
+    nodeEls.get(id).g.classList.add("sel");
+    edgeEls.forEach(o => { if (o.e.from === id || o.e.to === id) { mark(o, "near"); nodeEls.get(o.e.from === id ? o.e.to : o.e.from).g.classList.add("near"); } });
+    panel.replaceChildren();
+    const g = groups.find(x => x.id === n.group);
+    panel.append(el("div", "kicker", g ? g.label : ""), el("h2", null, n.label), el("p", null, n.description || ""));
+    if (n.files && n.files.length) {
+      panel.append(el("div", "sub", "Where it lives"));
+      const ul = el("ul", "files");
+      n.files.forEach(f => { const li = el("li"); const parts = f.split("/"); const file = parts.pop(); li.append(el("span", null, parts.join("/") + "/"), file); ul.append(li); });
+      panel.append(ul);
+    }
+    const out = edges.filter(e => e.from === id), inc = edges.filter(e => e.to === id);
+    const linkList = (title, list, other) => {
+      if (!list.length) return;
+      panel.append(el("div", "sub", title));
+      const box = el("div", "links");
+      list.forEach(e => {
+        const row = el("div"), b = el("button", null, byId.get(other(e)).label); b.type = "button";
+        b.addEventListener("click", () => showNode(other(e)));
+        row.append(b); if (e.label) row.append(` (${e.label})`); box.append(row);
+      });
+      panel.append(box);
+    };
+    linkList("Talks to", out, e => e.to);
+    linkList("Used by", inc, e => e.from);
+    const tasks = (ARCH.changes || []).filter(c => c.nodes.includes(id));
+    if (tasks.length) { panel.append(el("div", "sub", "Change it here to")); tasks.forEach(t => panel.append(el("p", null, t.task))); }
+    const back = el("button", "btn back", mode === "live" ? "Back to the live call" : flow ? `Back to "${flow.title}"` : "Show overview"); back.type = "button";
+    back.addEventListener("click", () => restore());
+    panel.append(back);
+  }
+
+  function showOverview() {
+    stopRun(); mode = "overview";
+    flow = null; setFlowButtons(); clearMarks();
+    panel.replaceChildren();
+    panel.append(el("div", "kicker", "Overview"), el("h2", null, `${groups.length} layers, ${nodes.length} parts`));
+    groups.forEach(g => {
+      const p = el("p"); const b = el("b", null, g.label + ". "); p.append(b, g.description || nodes.filter(n => n.group === g.id).map(n => n.label).join(", ") + ".");
+      panel.append(p);
+    });
+    panel.append(el("p", "status", "Pick a walkthrough above, or click any box."));
+  }
+
+  /* Flow buttons */
+  const fl = document.getElementById("flows");
+  flows.forEach(f => { const b = el("button", null, f.title); b.type = "button"; b.dataset.id = f.id; b.addEventListener("click", () => showFlow(f.id, 0)); fl.append(b); });
+  const all = el("button", null, "Overview"); all.type = "button"; all.dataset.id = ""; all.addEventListener("click", showOverview); fl.append(all);
+
+  /* Where to change */
+  const ch = document.getElementById("changes");
+  (ARCH.changes || []).forEach(c => {
+    const li = el("li"), chips = el("div", "chips");
+    c.nodes.filter(id => byId.has(id)).forEach(id => { const b = el("button", null, byId.get(id).label); b.type = "button"; b.addEventListener("click", () => { showNode(id); document.getElementById("panel").scrollIntoView({ block: "nearest" }); }); chips.append(b); });
+    li.append(el("span", null, c.task), chips); ch.append(li);
+  });
+
+  /* Markdown for assistants */
+  const md = document.getElementById("md");
+  md.textContent = ARCH.markdown || "";
+  const status = document.getElementById("status");
+  document.getElementById("copy").addEventListener("click", () => {
+    const sel = () => { md.hidden = false; const r = document.createRange(); r.selectNodeContents(md); const s = getSelection(); s.removeAllRanges(); s.addRange(r); status.textContent = "Selected. Press Copy."; };
+    try { navigator.clipboard.writeText(ARCH.markdown || "").then(() => { status.textContent = "Copied."; }, sel); } catch (e) { sel(); }
+  });
+  document.getElementById("showMd").addEventListener("click", e => { md.hidden = !md.hidden; e.currentTarget.setAttribute("aria-expanded", String(!md.hidden)); e.currentTarget.textContent = md.hidden ? "Show" : "Hide"; });
+
+  /* ---------- Live call simulator ---------- */
+  const SC = ARCH.scenario;
+  let runToken = 0, running = false, liveBox = null, speed = "normal";
+  const SPEED = { slow: { px: 0.18, dwell: 2600, quiet: 260 }, normal: { px: 0.32, dwell: 1300, quiet: 140 }, fast: { px: 0.9, dwell: 380, quiet: 40 } };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  function stopRun() { runToken++; running = false; const b = document.getElementById("sendBtn"); if (b) { b.dataset.running = "false"; b.textContent = "Send call"; } }
+
+  if (SC) {
+    const sim = document.getElementById("sim"); sim.hidden = false;
+    const vals = {};
+    const top = el("div", "sim-top");
+    top.append(el("h2", null, SC.title || "Send a call"));
+    const url = el("input"); url.id = "simUrl"; url.type = "text"; url.spellcheck = false; url.value = (SC.input && SC.input.value) || ""; url.setAttribute("aria-label", (SC.input && SC.input.label) || "Input");
+    const send = el("button", "send", "Send call"); send.id = "sendBtn"; send.type = "button";
+    const sp = el("div", "speed"); sp.append("Speed");
+    const spSeg = el("div", "segs");
+    ["slow", "normal", "fast"].forEach(k => { const b = el("button", null, k[0].toUpperCase() + k.slice(1)); b.type = "button"; b.setAttribute("aria-pressed", String(k === speed)); b.addEventListener("click", () => { speed = k; spSeg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); }); spSeg.append(b); });
+    sp.append(spSeg);
+    top.append(url, send, sp);
+    const opts = el("div", "opts");
+    const optEls = [];
+    SC.options.forEach(o => {
+      vals[o.id] = o.choices[0].value;
+      const wrap = el("div", "opt"), seg = el("div", "segs"); seg.setAttribute("role", "group"); seg.setAttribute("aria-label", o.label);
+      wrap.append(el("span", null, o.label), seg);
+      o.choices.forEach(c => {
+        const b = el("button", null, c.label); b.type = "button"; b.setAttribute("aria-pressed", String(c.value === vals[o.id]));
+        b.addEventListener("click", () => { vals[o.id] = c.value; seg.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", String(x === b))); refreshEnabled(); startRun(); });
+        seg.append(b);
+      });
+      optEls.push([o, wrap, seg]); opts.append(wrap);
+    });
+    sim.append(top, opts);
+    const condOk = (when, v) => Object.entries(when || {}).every(([k, c]) => { const x = v[k]; return x != null && (Array.isArray(c) ? c.includes(x) : c === x); });
+    // Derived values (e.g. "isrOk") are computed in order from the options that are in effect.
+    function derive(v) { const d = { ...v }; (SC.derive || []).forEach(r => { if (d[r.id] == null && condOk(r.when, d)) d[r.id] = r.value; }); return d; }
+    function active() {
+      const v = {};
+      SC.options.forEach(o => { if (!o.enabledWhen || condOk(o.enabledWhen, derive(v))) v[o.id] = vals[o.id]; });
+      return derive(v);
+    }
+    function refreshEnabled() { const v = active(); optEls.forEach(([o, wrap, seg]) => { const on = v[o.id] != null; wrap.classList.toggle("off", !on); seg.querySelectorAll("button").forEach(b => b.disabled = !on); }); }
+    refreshEnabled();
+    send.addEventListener("click", () => { if (running) { stopRun(); } else startRun(); });
+    url.addEventListener("keydown", e => { if (e.key === "Enter") startRun(); });
+
+    function compose() {
+      const v = active(), vars = {};
+      const pat = SC.input && SC.input.pattern;
+      if (pat) { const m = url.value.match(new RegExp(pat)); const dflt = (SC.input.value || "").match(new RegExp(pat)); Object.assign(vars, (dflt && dflt.groups) || {}, (m && m.groups) || {}); vars.input = url.value; }
+      else {
+        try { const u = new URL(url.value.trim()); Object.assign(vars, { url: u.href, host: u.host, path: u.pathname + u.search, scheme: u.protocol.replace(":", "") }); }
+        catch (e) { Object.assign(vars, { url: url.value, host: url.value, path: "/", scheme: "https" }); }
+      }
+      Object.entries(v).forEach(([k, x]) => { if (vars[k] == null) vars[k] = x; });
+      SC.options.forEach(o => { const c = o.choices.find(c => c.value === v[o.id]); if (c && c.vars) Object.assign(vars, c.vars); });
+      const tpl = t => t == null ? t : String(t).replace(/\{(\w+)\}/g, (m, k) => vars[k] != null ? vars[k] : m);
+      return SC.steps.filter(st => condOk(st.when, v) || !st.when).map(st => ({ ...st, node: tpl(st.node), text: tpl(st.text), show: tpl(st.show), events: (st.events || []).map(tpl) })).filter(st => byId.has(st.node));
+    }
+
+    // Live panel (persistent so node details can be opened mid-run)
+    liveBox = el("div"); liveBox.style.cssText = "display:flex;flex-direction:column;gap:12px";
+    const head = el("div", "live-head"), kick = el("div", "kicker", "Live call"), counter = el("span", "counter");
+    head.append(kick, counter);
+    const title = el("h2"), tag = el("span", "dirtag"), narr = el("p", "narr");
+    const flightLab = el("div", "sub", "In flight"), flight = el("pre", "flight");
+    const logLab = el("div", "sub", "Event log (OkHttp EventListener names, simulated timing)");
+    const log = el("div", "log");
+    const tagRow = el("div"); tagRow.append(tag);
+    liveBox.append(head, title, tagRow, narr, flightLab, flight, logLab, log);
+    if (SC.eventsLabel) logLab.textContent = SC.eventsLabel;
+
+    function edgeBetween(a, b) {
+      for (const o of edgeEls) { if (o.e.from === a && o.e.to === b) return [o, false]; if (o.e.from === b && o.e.to === a) return [o, true]; }
+      return [null, false];
+    }
+    const center = id => { const p = pos.get(id); return { x: p.x + NW / 2, y: p.y + NH / 2 }; };
+    async function travel(a, b, dir, tok) {
+      if (!a || a === b) return;
+      const [o, rev] = edgeBetween(a, b);
+      let path = o ? o.p : null, temp = null;
+      if (!path) { const p1 = center(a), p2 = center(b); temp = sv("path", { class: "jump " + dir, d: `M${p1.x},${p1.y} L${p2.x},${p2.y}` }, eLayer); path = temp; }
+      if (o) { o.p.classList.remove("on", "up", "fail"); const cls = dir === "down" ? "on" : dir; o.p.classList.add(cls); o.p.setAttribute("marker-end", `url(#mk-${cls})`); if (o.lab) { o.lab.classList.remove("on", "up", "fail"); o.lab.classList.add(cls); } }
+      const L = path.getTotalLength();
+      const pulse = sv("g", { class: "pulse " + dir }, nLayer);
+      sv("circle", { class: "halo", r: 13 }, pulse); sv("circle", { class: "core", r: 6.5 }, pulse);
+      const dur = reduce ? 0 : Math.max(180, L / SPEED[speed].px);
+      const t0 = performance.now();
+      await new Promise(res => {
+        const frame = now => {
+          if (tok !== runToken) { pulse.remove(); if (temp) temp.remove(); return res(); }
+          const k = dur ? Math.min(1, (now - t0) / dur) : 1, e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+          const pt = path.getPointAtLength((rev ? 1 - e : e) * L);
+          pulse.setAttribute("transform", `translate(${pt.x},${pt.y})`);
+          if (k < 1) requestAnimationFrame(frame); else { pulse.remove(); if (temp) setTimeout(() => temp.remove(), 600); res(); }
+        };
+        requestAnimationFrame(frame);
+      });
+    }
+
+    async function startRun() {
+      stopRun();
+      const tok = ++runToken; running = true; mode = "live"; flow = null; setFlowButtons();
+      send.dataset.running = "true"; send.textContent = "Stop";
+      const steps = compose();
+      clearMarks(); root.classList.add("live");
+      log.replaceChildren(); flight.textContent = ""; renderLive();
+      let t = 0, prev = null, shown = 0; const total = steps.filter(s => !s.quiet).length;
+      for (const st of steps) {
+        if (tok !== runToken) return;
+        await travel(prev, st.node, st.dir || "down", tok);
+        if (tok !== runToken) return;
+        nodeEls.forEach(o => o.g.classList.remove("cur", "up", "fail"));
+        const ne = nodeEls.get(st.node); ne.g.classList.add("inflow", "cur"); if (st.dir === "up" || st.dir === "fail") ne.g.classList.add(st.dir);
+        log.querySelectorAll(".new").forEach(x => x.classList.remove("new"));
+        t += st.ms || 0;
+        (st.events || []).forEach(ev => { const row = el("div", "new"); row.append(el("span", null, `${t} ms`), el("span", null, ev)); log.append(row); });
+        log.scrollTop = log.scrollHeight;
+        if (st.show) flight.textContent = st.show;
+        if (!st.quiet) {
+          shown++;
+          title.textContent = byId.get(st.node).label;
+          tag.className = "dirtag " + (st.dir || "down"); tag.textContent = st.dir === "up" ? "Response, going back up" : st.dir === "fail" ? "Failure" : "Request, going down";
+          narr.textContent = st.text || "";
+          counter.textContent = `step ${shown} of ${total}`;
+        }
+        prev = st.node;
+        await sleep(st.quiet ? SPEED[speed].quiet : SPEED[speed].dwell);
+      }
+      if (tok !== runToken) return;
+      const done = el("div", "done"); done.append(el("span", null, `${t} ms`), el("span", null, "Done. Change an option above to send another call.")); log.append(done); log.scrollTop = log.scrollHeight;
+      running = false; send.dataset.running = "false"; send.textContent = "Send again";
+    }
+
+    function renderLive() {
+      mode = "live"; panel.replaceChildren(liveBox);
+      root.classList.add("live"); root.classList.remove("dim");
+      nodeEls.forEach(o => o.g.classList.remove("sel", "near"));
+      edgeEls.forEach(o => { o.p.classList.remove("near"); if (o.lab) o.lab.classList.remove("near"); });
+    }
+    window.__showLive = renderLive;
+    title.textContent = "Ready"; narr.textContent = "Pick how this call should go, then press Send call."; counter.textContent = "";
+    log.append(el("span", "empty", "Events appear here as the call runs."));
+    renderLive();
+    setTimeout(() => { if (mode === "live" && !running) startRun(); }, 700);
+  } else if (flows.length) showFlow(flows[0].id, 0); else showOverview();
+
+  function showLive() { if (window.__showLive) window.__showLive(); }
+})();
+</script>
+
+</body></html>

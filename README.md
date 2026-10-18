@@ -8,10 +8,25 @@ It runs as a **Claude skill** (in Claude Code or the Claude app) or as a **comma
 
 Supported languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C and C++.
 
+## Demo: the XRP Ledger server
+
+[![howitworks on xrpld: the diagram, a guided tour, and live transactions playing through the code](docs/media/xrpld-demo.gif)](docs/media/xrpld-demo.mp4)
+
+howitworks run on [xrpld](https://github.com/XRPLF/rippled), the C++ server behind the XRP Ledger (1,266 source files). One command, using a Claude Code login:
+
+```bash
+howitworks https://github.com/XRPLF/rippled.git --name xrpld --open
+```
+
+It drew 36 parts in 6 layers and 4 walkthroughs, and wrote a simulator for submitting a transaction over JSON-RPC. The simulator covers public, admin and abusive callers, truncated blobs and bad signatures, low fees that get queued, and sequence numbers already used. In the video: the overview, the Consensus component, the "Agree on and apply the next ledger" walkthrough, then two live transactions. The first is applied and relayed. The second is rejected for a bad signature.
+
+The preview above runs at 3× speed. [Watch the full video](docs/media/xrpld-demo.mp4) (2 min), or [download the page itself](docs/media/xrpld-architecture.html) and open it in a browser to try the simulator.
+
 ---
 
 ## Contents
 
+- [Demo: the XRP Ledger server](#demo-the-xrp-ledger-server)
 - [What you get](#what-you-get)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -46,7 +61,7 @@ Every run produces three files:
 
 The page contains:
 
-- **A layered diagram** of 12 to 28 components, from the callers at the top to storage and I/O at the bottom. Click any box to see what it does, which files it lives in, and what it talks to.
+- **A layered diagram** of a dozen to a few dozen components, from the callers at the top to storage and I/O at the bottom. Click any box to see what it does, which files it lives in, and what it talks to.
 - **Guided tours** of the 2 to 4 most important paths, such as "Send a request" or "Create a topic", with each step numbered on the diagram.
 - **A live simulator.** Choose how a call should go (cache hit or miss, validation error, retry, leader moved, and so on), press **Send**, and watch it travel through the diagram while each step is narrated, the payload in flight is shown, and an event log fills in with real function names from the code.
 - **Where to make a change**: common tasks mapped to the components you would edit.
@@ -403,6 +418,7 @@ Complete, checked examples are in [`skills/howitworks/examples/`](skills/howitwo
 | `okhttp.architecture.json` | [square/okhttp](https://github.com/square/okhttp) | An HTTP call: cache, connection reuse, HTTP/2 or 1.1, redirects, auth, dropped connections |
 | `kafka.architecture.json` | [apache/kafka](https://github.com/apache/kafka) | Producing a record: acks, batching, metadata, a moved leader, too few in-sync replicas, idempotent retries |
 | `petclinic.architecture.json` | [spring-projects/spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Finding owners, adding a pet with validation errors, a cached vets list |
+| `xrpld.architecture.json` | [XRPLF/rippled](https://github.com/XRPLF/rippled) | Submitting a transaction over JSON-RPC: caller roles, bad blobs and signatures, fee queuing, used sequence numbers |
 
 ---
 
@@ -472,7 +488,8 @@ howitworks/
     │       └── arch.mjs          prompts, Claude Code runner, validation, Markdown and HTML output
     ├── templates/
     │   └── architecture.html     the interactive page
-    └── examples/                 OkHttp, Kafka and PetClinic descriptions
+    └── examples/                 OkHttp, Kafka, PetClinic and xrpld descriptions
+docs/media/                       the demo video and the xrpld page
 ```
 
 To work on it locally:
