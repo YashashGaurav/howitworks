@@ -63,7 +63,7 @@ function cycleCuts(out, comp, steps = 3) {
   return cuts;
 }
 
-const NOISE = new Set(["src", "lib", "app", "source", "sources"]);
+const NOISE = new Set(["src", "lib", "app", "source", "sources", "include", "inc"]);
 function logicalGroups(nodes, py, jvm, maxGroups = 40) {
   const segs = new Map();
   for (const f of nodes) {
@@ -101,7 +101,7 @@ export function analyze(g) {
   const nodes = [...out.keys()].filter(f => out.get(f).size || inA.get(f).size);
   const isolated = out.size - nodes.length;
   const n = nodes.length;
-  if (!n) throw new Error("No imports between source files were found. Supported languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript.");
+  if (!n) throw new Error("No imports between source files were found. Supported languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C, C++.");
   const ancestors = new Map(nodes.map(v => [v, reach(v, inA)]));
   const maxFanIn = Math.max(1, ...nodes.map(v => inA.get(v).size));
   const rows = nodes.map(v => ({

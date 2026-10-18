@@ -40,7 +40,7 @@ Output
   ARCHITECTURE.md    The same content as text, for engineers and AI assistants
   architecture.json  The description the diagram is drawn from; edit it and re-run with --spec
 
-Languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript.`;
+Languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C, C++.`;
 
 function parseArgs(argv) {
   const a = { cmd: "diagram", repo: null, out: ".", spec: null, scenario: null, sim: true, name: null, model: process.env.HOWITWORKS_MODEL || "claude-opus-5-5", open: false, bare: false };

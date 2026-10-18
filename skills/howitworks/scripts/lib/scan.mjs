@@ -7,16 +7,18 @@ export const SKIP_DIRS = new Set([
   ".git", ".hg", ".svn", "node_modules", "bower_components", "dist", "build", "out", "target",
   ".gradle", ".idea", ".vscode", "venv", ".venv", "env", "__pycache__", ".mypy_cache",
   ".pytest_cache", ".tox", "site-packages", "coverage", ".next", ".nuxt", ".turbo", ".cache",
-  "vendor", "third_party",
+  "vendor", "third_party", "3rdparty", "thirdparty", "subprojects", "extern", "deps",
 ]);
 const TEST_DIR_RE = /(^|\/)([\w.-]*[-_.]tests?|tests?|__tests__|__mocks__|testing|test-?fixtures|spec|specs|e2e|fixtures?|testFixtures|src\/(?:\w+)?Test)(\/|$)/;
 const EXTRA_DIR_RE = /^(?:[^/]+\/)?(examples?|samples?|demos?|docs?|benchmarks?)(\/|$)/;
-const TEST_FILE_RE = /(^test_.*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$|Tests?\.(java|kt|scala)$|^conftest\.py$)/;
+const TEST_FILE_RE = /(^test_.*\.py$|_test\.py$|\.(test|spec)\.[jt]sx?$|Tests?\.(java|kt|scala)$|^conftest\.py$|(_test|_unittest|_tests|_bench|_benchmark|Test|Tests)\.(c|cc|cpp|cxx|c\+\+)$|^test_.*\.(c|cc|cpp|cxx)$)/;
 
 export const PY_EXT = new Set([".py"]);
 export const JVM_EXT = new Set([".java", ".kt", ".kts", ".scala"]);
 export const JS_EXT = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]);
-const ALL_EXT = new Set([...PY_EXT, ...JVM_EXT, ...JS_EXT]);
+export const CPP_EXT = new Set([".c", ".cc", ".cpp", ".cxx", ".c++", ".cu", ".h", ".hh", ".hpp", ".hxx", ".h++", ".ipp", ".inl", ".tpp", ".cuh"]);
+export const CPP_SOURCE_EXT = new Set([".cc", ".cpp", ".cxx", ".c++", ".cu", ".hh", ".hpp", ".hxx", ".h++", ".ipp", ".tpp", ".cuh"]);
+const ALL_EXT = new Set([...PY_EXT, ...JVM_EXT, ...JS_EXT, ...CPP_EXT]);
 
 export const ext = f => path.extname(f);
 export const base = f => f.split("/").pop();
@@ -53,6 +55,7 @@ export function isTestFile(rel) {
   const name = base(rel), d = dirname(rel), x = ext(name);
   if (PY_EXT.has(x)) return name.startsWith("test_") || name.endsWith("_test.py");
   if (JS_EXT.has(x)) return /\.(test|spec)\.[cm]?[jt]sx?$/.test(name) || `/${d}/`.includes("/__tests__/");
+  if (CPP_EXT.has(x)) return /(_test|_unittest|_tests|Test|Tests)\.(c|cc|cpp|cxx|c\+\+)$/.test(name) || /^test_.*\.(c|cc|cpp|cxx)$/.test(name) || /(^|\/)(tests?|unittests?)(\/|$)/.test(d);
   return /(Test|Tests|IT|Spec)\.(java|kt|scala)$/.test(name) || /(^|\/)src\/(test|\w+Test)(\/|$)/.test(d);
 }
 
@@ -63,6 +66,8 @@ export function languageOf(rel) {
   if (x === ".kt" || x === ".kts") return "kotlin";
   if (x === ".scala") return "scala";
   if ([".ts", ".tsx", ".mts", ".cts"].includes(x)) return "typescript";
+  if (x === ".c") return "c";
+  if (CPP_EXT.has(x)) return "c++";
   return "javascript";
 }
 
@@ -286,14 +291,46 @@ export class JsResolver {
   }
 }
 
+// ---------------------------------------------------------------- C / C++
+const INCLUDE_RE = /^[ \t]*#[ \t]*(?:include|import)[ \t]*([<"])([^>"\n]+)[>"]/gm;
+
+/** Resolves #include "x/y.h" and <x/y.h> to repo files without needing the
+ *  build system: first relative to the including file, then by matching the
+ *  path as a suffix of a repo file, preferring the closest one. */
+export class CppResolver {
+  constructor(files) {
+    this.fileset = new Set(files.filter(f => CPP_EXT.has(ext(f))));
+    this.byBase = new Map();
+    for (const f of this.fileset) { const b = base(f); if (!this.byBase.has(b)) this.byBase.set(b, []); this.byBase.get(b).push(f); }
+  }
+  resolve(rel, inc, quoted) {
+    inc = inc.trim().replace(/^\.\//, "");
+    if (quoted || inc.includes("/")) {
+      const local = path.posix.normalize(path.posix.join(dirname(rel) || ".", inc));
+      if (this.fileset.has(local)) return local;
+    }
+    const cands = (this.byBase.get(base(inc)) || []).filter(f => f === inc || f.endsWith("/" + inc));
+    if (!cands.length) return null;
+    if (cands.length === 1) return cands[0];
+    const common = f => { const a = dirname(rel).split("/"), b = f.split("/"); let i = 0; while (i < a.length && a[i] === b[i]) i++; return i; };
+    return cands.sort((a, b) => common(b) - common(a) || a.length - b.length)[0];
+  }
+  deps(rel, text) {
+    const out = new Set();
+    const body = text.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/\/\/[^\n]*/g, "");
+    for (const m of body.matchAll(INCLUDE_RE)) { const t = this.resolve(rel, m[2], m[1] === '"'); if (t) out.add(t); }
+    out.delete(rel); return out;
+  }
+}
+
 export function buildGraph(root, { includeTests = false, typeImports = false } = {}) {
   const files = discover(root, includeTests);
   const texts = new Map(files.map(f => [f, read(root, f)]));
-  const py = new PythonResolver(files, typeImports), jvm = new JvmResolver(files, texts), js = new JsResolver(root, files, typeImports);
+  const py = new PythonResolver(files, typeImports), jvm = new JvmResolver(files, texts), js = new JsResolver(root, files, typeImports), cpp = new CppResolver(files);
   const out = new Map(files.map(f => [f, new Set()]));
   for (const f of files) {
     const x = ext(f);
-    const d = PY_EXT.has(x) ? py.deps(f, texts.get(f)) : JVM_EXT.has(x) ? jvm.deps(f, texts.get(f)) : js.deps(f, texts.get(f));
+    const d = PY_EXT.has(x) ? py.deps(f, texts.get(f)) : JVM_EXT.has(x) ? jvm.deps(f, texts.get(f)) : CPP_EXT.has(x) ? cpp.deps(f, texts.get(f)) : js.deps(f, texts.get(f));
     for (const t of d) out.get(f).add(t);
   }
   return { files, texts, out, py, jvm };

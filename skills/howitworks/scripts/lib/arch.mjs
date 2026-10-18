@@ -35,7 +35,8 @@ export const RULES = `Rules:
 Return only the JSON object.`;
 
 function excerpt(root, rel, maxLines = 80) {
-  let t = read(root, rel).replace(/^\s*\/\*[\s\S]*?(Copyright|License)[\s\S]*?\*\/\s*/i, "");
+  let t = read(root, rel).replace(/^\s*\/\*[\s\S]*?(Copyright|License)[\s\S]*?\*\/\s*/i, "")
+    .replace(/^(?:[ \t]*\/\/[^\n]*\n)*?[ \t]*\/\/[^\n]*(?:Copyright|License)[^\n]*\n(?:[ \t]*\/\/[^\n]*\n)*/i, "");
   if (rel.endsWith(".py")) t = t.replace(/^(#[^\n]*\n)+/, "");
   const lines = t.split("\n");
   return lines.slice(0, maxLines).join("\n") + (lines.length > maxLines ? `\n... (${lines.length - maxLines} more lines)` : "");
@@ -179,7 +180,8 @@ export function buildScenarioPrompt(root, spec, budgetChars = 110000) {
   const seen = new Set(), parts = []; let used = 0;
   for (const id of order) for (const f of (by.get(id)?.files || [])) {
     if (seen.has(f)) continue; seen.add(f);
-    let t = read(root, f).replace(/^\s*\/\*[\s\S]*?(Copyright|License)[\s\S]*?\*\/\s*/i, "");
+    let t = read(root, f).replace(/^\s*\/\*[\s\S]*?(Copyright|License)[\s\S]*?\*\/\s*/i, "")
+      .replace(/^(?:[ \t]*\/\/[^\n]*\n)*?[ \t]*\/\/[^\n]*(?:Copyright|License)[^\n]*\n(?:[ \t]*\/\/[^\n]*\n)*/i, "");
     if (t.length > 14000) t = t.slice(0, 14000) + "\n... (truncated)";
     if (used + t.length > budgetChars) continue;
     parts.push(`--- ${f} (component: ${by.get(id).label}) ---\n${t}`); used += t.length;

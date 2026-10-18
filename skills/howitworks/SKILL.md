@@ -9,7 +9,7 @@ You produce `architecture.html` (an interactive diagram) and `ARCHITECTURE.md` f
 
 Scripts live next to this file. Run them with Node 18 or newer; they have no dependencies. Below, `SKILL_DIR` means the folder containing this SKILL.md.
 
-Supported languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript.
+Supported languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C, C++.
 
 ### Getting the repo
 

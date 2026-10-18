@@ -2,7 +2,7 @@
 
 Draws how a repository works: an interactive diagram of its main parts and how they connect, step-by-step walkthroughs of the important paths, and a live simulator that plays a request through the code. The same content is written to `ARCHITECTURE.md` for engineers and AI assistants.
 
-Works on Python, Java, Kotlin, Scala, TypeScript and JavaScript repos. Node 18 or newer, no dependencies.
+Works on Python, Java, Kotlin, Scala, TypeScript, JavaScript, C and C++ repos. Node 18 or newer, no dependencies.
 
 The npm package is `howitworks-cli` (the name `howitworks` is taken on npm); the command it installs is `howitworks`.
 
@@ -51,7 +51,7 @@ npx howitworks-cli render kafka --spec skills/howitworks/examples/kafka.architec
 
 ## How it works
 
-1. **Scan.** Reads imports (Python, Java, Kotlin, Scala, TS/JS), packages, build files, README and doc comments, entry points and HTTP routes, and finds the most-imported files and import cycles.
+1. **Scan.** Reads imports (Python, Java, Kotlin, Scala, TS/JS, and `#include` for C/C++), packages, build files (including CMake, vcpkg and Conan), README and doc comments, entry points and HTTP routes, and finds the most-imported files and import cycles. C/C++ includes are resolved without the build system: relative to the including file first, then by matching the path against repo files.
 2. **Describe.** An agent or the Claude API reads the facts and the key files and writes `architecture.json`: components, layers, connections and walkthroughs.
 3. **Simulate.** A second pass reads the full source of every file on the main path and writes the live simulator: the options the code branches on, and every step for every combination.
 4. **Render.** Checks every file path against the repo, plays every combination of simulator options to confirm each one completes, and writes a single self-contained HTML page.

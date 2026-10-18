@@ -3,7 +3,7 @@
 // architecture description is written from.
 import fs from "node:fs";
 import path from "node:path";
-import { discover, read, countLines, ext, base, dirname, languageOf, PY_EXT, JVM_EXT, JS_EXT, KT_TOPLEVEL_RE, SKIP_DIRS, blankPyStrings } from "./scan.mjs";
+import { discover, read, countLines, ext, base, dirname, languageOf, PY_EXT, JVM_EXT, JS_EXT, CPP_EXT, CPP_SOURCE_EXT, KT_TOPLEVEL_RE, SKIP_DIRS, blankPyStrings } from "./scan.mjs";
 
 const SUPPORT_PATH_RE = /(^|[/-])(test|tests|testing|testapp|test-app|testing-support|sample|samples|example|examples|demo|build-logic|buildSrc|benchmarks?|bench|scripts?|tools|mockwebserver[\w-]*|[\w-]*-deprecated)([/-]|$)/i;
 /** Test, sample and build code. Only folders above the source root count, so a
@@ -25,23 +25,33 @@ export function cleanDoc(raw) {
   const m = t.match(/^(.+?[.!?])(\s|$)/);
   let s = m ? m[1] : t;
   if (s.length > 180) s = s.slice(0, 177).replace(/\s\S*$/, "") + "...";
-  if (/^(Copyright|Licensed|SPDX|This Source Code|Generated|Auto-generated|@|https?:\/\/|www\.)/i.test(s) || s.length < 12) return "";
+  if (/^(Copyright|Licensed|SPDX|This Source Code|Generated|Auto-generated|@|https?:\/\/|www\.|Use of this source code|All rights reserved|Distributed under|This file is part of|This program is free software|Permission is hereby granted|THIS SOFTWARE IS PROVIDED|Redistribution and use|-\*-)/i.test(s) || s.length < 12) return "";
   return s;
 }
 
-export function readmeBlurb(file) {
+export function readmeBlurb(file, projectName = "") {
   let t; try { t = fs.readFileSync(file, "utf8"); } catch { return ""; }
   t = t.replace(/<!--[\s\S]*?-->/g, "").replace(/```[\s\S]*?```/g, "").replace(/^[^\n]*\n[=\-]{3,}[ \t]*$/gm, "");
+  const ok = [];
   for (let p of t.split(/\n\s*\n/)) {
+    if (/^( {4}|\t)/.test(p)) continue; // indented code
     p = p.trim();
-    if (!p || /^(#|!|\[!|\[!\[|<|\||---|===|>|-|\*)/.test(p)) continue;
+    if (!p || /^(#|!|\[!|\[!\[|<|\||---|===|>|[-*+]\s|\d+\.\s)/.test(p)) continue;
     p = p.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim();
-    if (p.length < 30 || /^(See|Check|Please|Note|For more|For details|To |Read|Visit|Learn more|Documentation|Docs)\b/i.test(p)) continue;
+    if (p.length < 30 || /^(See|Check|Please|Note|For more|For details|To |Read|Visit|Learn more|Documentation|Docs|Try|Join|Follow|Star)\b/i.test(p)) continue;
+    if (/^This (document|README|readme|guide|file|page|repository|repo)\b/.test(p) || /^[\w&+ ]{1,20}:\s/.test(p) && /stack\s*overflow|discord|slack|gitter|mailing list|issues/i.test(p)) continue;
     if ((p.match(/https?:\/\//g) || []).length > 2) continue;
-    p = p.replace(/ — /g, ": ").replace(/—/g, ", ");
-    return p.length > 420 ? p.slice(0, 417).replace(/\s\S*$/, "") + "..." : p;
+    ok.push(p);
+    if (ok.length >= 12) break;
   }
-  return "";
+  // Prefer the paragraph that names the project and says what it is.
+  const nm = String(projectName).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const names = x => nm.length >= 2 && x.toLowerCase().replace(/[^a-z0-9 ]/g, "").split(/\s+/).some(w => w === nm || (nm.length > 4 && w.includes(nm)));
+  const defines = x => /\b(is|are)\s+(a|an|the)\b/i.test(x.slice(0, 200));
+  const early = ok.slice(0, 3);
+  let p = early.find(x => names(x) && defines(x)) || early.find(x => names(x)) || early.find(defines) || ok[0] || "";
+  p = p.replace(/ — /g, ": ").replace(/—/g, ", ");
+  return p.length > 420 ? p.slice(0, 417).replace(/\s\S*$/, "") + "..." : p;
 }
 
 const ROUTES = [
@@ -49,6 +59,7 @@ const ROUTES = [
   /@\w+\.(route|get|post|put|delete|patch|websocket)\(\s*["']([^"']+)["']/g,
   /\b(?:app|router|server|api)\.(get|post|put|delete|patch|all|use)\(\s*["'`](\/[^"'`]*)["'`]/g,
   /\b(path|re_path)\(\s*r?["']([^"']*)["']\s*,/g,
+  /\bCROW_ROUTE\(\s*\w+\s*,\s*"([^"]+)"\s*\)()/g,
 ];
 
 function stripComments(text, x) {
@@ -59,6 +70,7 @@ function stripComments(text, x) {
 function entryKind(rel, code, raw) {
   if (/@SpringBootApplication|@QuarkusMain|@MicronautApplication/.test(code)) return "application";
   if (/^\s*(?:public\s+)?static\s+void\s+main\s*\(|^fun\s+main\s*\(|^\s*def\s+main\s*\(\s*args\s*:\s*Array\[String\]/m.test(code)) return "main";
+  if (CPP_EXT.has(ext(rel)) && /^\s*(?:extern\s+"C"\s+)?(?:int|auto|void)\s+w?main\s*\(/m.test(code)) return "main";
   if (base(rel) === "__main__.py" || /if\s+__name__\s*==\s*['"]__main__['"]/.test(raw)) return "main";
   if (raw.startsWith("#!") && raw.split("\n")[0].includes("node")) return "cli";
   if (/@(RestController|Controller)\b/.test(code)) return "http";
@@ -83,6 +95,7 @@ function routesOf(code) {
         const mt = code.slice(m.index + m[0].length, m.index + m[0].length + 120).match(/methods\s*=\s*\[([^\]]+)\]/);
         if (mt) verb = mt[1].split(",").map(s => s.trim().replace(/['"]/g, "")).join(",");
       } else if (i === 3) { verb = "ANY"; p = "/" + p.replace(/^\^/, "").replace(/\$$/, ""); }
+      else if (i === 4) { verb = "ANY"; p = m[1]; }
       else if (verb === "USE" || verb === "ALL") verb = "ANY";
       const r = `${verb} ${p}`; if (!out.includes(r)) out.push(r);
     }
@@ -93,6 +106,51 @@ function routesOf(code) {
 const JVM_DECL_RE = /^(?:@[\w.]+(?:\([^)]*\))?\s*)*(?!private|internal)(?:(?:public|protected|abstract|final|open|sealed|data|enum|value|annotation|inline|fun|static|case)\s+)*(class|interface|object|enum|record|trait|@interface)\s+([A-Z]\w*)/gm;
 const JVM_DOC_DECL_RE = /\/\*\*([\s\S]*?)\*\/\s*(?:@[\w.]+(?:\([^)]*\))?\s*)*(?:(?:public|protected|internal|private|abstract|final|open|sealed|data|enum|value|annotation|inline|fun|static|case)\s+)*(?:class|interface|object|enum|record|trait|@interface|typealias)\s+([A-Z]\w*)/g;
 const TS_EXPORT_RE = /^export\s+(?:declare\s+)?(?:default\s+)?(?:abstract\s+)?(?:async\s+)?(class|function\*?|const|let|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm;
+
+const LICENSE_RE = /copyright|licen[sc]e|spdx|redistribution|all rights reserved|warranty|governed by|permission is hereby|free software|available under|\b(BSD|MIT|GPL|AGPL|LGPL|SSPL|Apache)\b.*\bterms\b/i;
+
+/** C/C++ file description, from one of two places: the comment at the top of
+ *  the file (before any #include or code), or the comment directly above the
+ *  first class/struct. License text and comments elsewhere are never used. */
+function commentParas(raw) {
+  const lines = raw.split("\n").map(l => l.replace(/^\s*(\/\/+!?|\/?\*+!?)\s?/, "").replace(/\*\/\s*$/, ""));
+  const paras = []; let cur = [];
+  for (const l of lines) { if (l.trim()) cur.push(l); else if (cur.length) { paras.push(cur.join("\n")); cur = []; } }
+  if (cur.length) paras.push(cur.join("\n"));
+  return paras;
+}
+function firstDescription(blockText) {
+  for (const para of commentParas(blockText)) {
+    if (LICENSE_RE.test(para) || /^\s*(#|-\*-|vim?:|@file\s*$)/.test(para)) continue;
+    const c = cleanDoc(para.replace(/^\s*@(file|brief)\b[^\n]*?\s/, "").replace(/(^|\s)[-=*~#]{3,}(?=\s|$)/g, " "));
+    if (c && !/^[\w.]+\.(h|hpp|c|cc|cpp)$/.test(c)) return c;
+  }
+  return "";
+}
+function cppSummary(text, fileName) {
+  const head = text.slice(0, 20000);
+  // 1. Top of file: comments before the first include or code line.
+  const lines = head.split("\n"); let i = 0, inBlock = false;
+  for (; i < lines.length; i++) {
+    const l = lines[i].trim();
+    if (inBlock) { if (l.includes("*/")) inBlock = false; continue; }
+    if (!l || l.startsWith("//")) continue;
+    if (l.startsWith("/*")) { if (!l.includes("*/")) inBlock = true; continue; }
+    if (/^#\s*(ifndef|define|pragma\s+once|if\s+!\s*defined)/.test(l)) continue;
+    break;
+  }
+  const top = lines.slice(0, i).join("\n");
+  for (const m of top.matchAll(/\/\*([\s\S]*?)\*\/|((?:^[ \t]*\/\/[^\n]*\n?)+)/gm)) { const d = firstDescription(m[1] ?? m[2]); if (d) return d; }
+  // 2. The comment directly above the first class/struct/union.
+  // Only when that class is the file's subject (its name matches the file name).
+  const stem = String(fileName || "").replace(/\.[^.]+$/, "").replace(/[_-]/g, "").toLowerCase();
+  const decl = head.match(/((?:\/\*(?:(?!\*\/)[\s\S])*\*\/|(?:[ \t]*\/\/[^\n]*\n)+))\s*(?:template\s*<[^>]*>\s*)?(?:class|struct|union)\s+(?:[A-Z_]+_EXPORT\s+)?(\w+)[^;{(]*\{/);
+  if (decl) {
+    const nm = decl[2].toLowerCase().replace(/_/g, "");
+    if (stem && (nm.includes(stem) || stem.includes(nm))) { const d = firstDescription(decl[1].replace(/^\/\*|\*\/$/g, "")); if (d) return d; }
+  }
+  return "";
+}
 
 export function fileFacts(rel, text) {
   const x = ext(rel); let summary = "", symbols = [];
@@ -122,6 +180,10 @@ export function fileFacts(rel, text) {
     if (best) summary = cleanDoc(best[1]);
     symbols = [...text.matchAll(JVM_DECL_RE)].map(m => m[2]);
     if (!symbols.length && /\.kts?$/.test(x)) symbols = [...text.matchAll(KT_TOPLEVEL_RE)].filter(m => !/^\s*(private|internal)/.test(m[0])).map(m => m[1]).slice(0, 6);
+  } else if (CPP_EXT.has(x)) {
+    summary = cppSummary(text, base(rel));
+    symbols = [...text.matchAll(/^[ \t]*(?:template\s*<[^>]*>\s*)?(?:class|struct)\s+(?:[A-Z_]+_EXPORT\s+|alignas\([^)]*\)\s*|\[\[[^\]]*\]\]\s*)*([A-Za-z_]\w*)\s*(?:final\s*)?(?::[^;{]*)?\{/gm)].map(m => m[1]);
+    if (!symbols.length && /\.(c|h)$/.test(x)) symbols = [...text.matchAll(/^(?:static\s+)?(?:inline\s+)?[A-Za-z_][\w\s\*]*?\b([a-z_]\w*)\s*\([^;{]*\)\s*\{/gm)].map(m => m[1]).filter(n => !["if", "for", "while", "switch", "return"].includes(n)).slice(0, 6);
   } else {
     symbols = [...text.matchAll(TS_EXPORT_RE)].map(m => m[2]);
     const head = text.match(/^(?:\s|#![^\n]*\n|(?:import|export\s+\*|export\s+\{)[^\n]*\n|['"]use [^\n]*\n|\/\/[^\n]*\n)*\/\*\*([\s\S]*?)\*\//);
@@ -151,6 +213,12 @@ function dependencies(root) {
   for (const p of ["requirements.txt"]) { const t = tryRead(p); if (t) t.split("\n").forEach(l => { const m = l.match(/^\s*([A-Za-z0-9_.\-]+)/); if (m && !/^\s*[#-]/.test(l)) add(m[1]); }); }
   const pp = tryRead("pyproject.toml"); if (pp) { const m = pp.match(/^dependencies\s*=\s*\[([\s\S]*?)\]/m); if (m) [...m[1].matchAll(/["']([A-Za-z0-9_.\-]+)/g)].forEach(x => add(x[1])); }
   const pom = tryRead("pom.xml"); if (pom) [...pom.matchAll(/<dependency>[\s\S]*?<artifactId>([^<]+)<\/artifactId>/g)].forEach(m => add(m[1]));
+  const cm = tryRead("CMakeLists.txt");
+  if (cm) [...cm.matchAll(/find_package\s*\(\s*([A-Za-z0-9_.+-]+)/gi)].forEach(m => add(m[1]));
+  const vcpkg = tryRead("vcpkg.json");
+  if (vcpkg) { try { (JSON.parse(vcpkg).dependencies || []).forEach(d => add(typeof d === "string" ? d : d.name)); } catch {} }
+  const conan = tryRead("conanfile.txt");
+  if (conan) { const m = conan.match(/\[requires\]([\s\S]*?)(\n\[|$)/); if (m) m[1].split("\n").forEach(l => { const n = l.trim().split("/")[0]; if (n) add(n); }); }
   const catalog = new Map(); const toml = tryRead("gradle/libs.versions.toml");
   if (toml) { const sect = toml.match(/^\[libraries\]([\s\S]*?)(^\[|$(?![\s\S]))/m); if (sect) for (const [, alias, body] of sect[1].matchAll(/^([\w.-]+)\s*=\s*(.+)$/gm)) { const m = body.match(/module\s*=\s*"[^:"]+:([^"]+)"/) || body.match(/"[^:"]+:([^:"]+)(?::|")/); if (m) catalog.set(alias.replace(/[-_]/g, ".").toLowerCase(), m[1]); } }
   for (const g of ["build.gradle", "build.gradle.kts", ...subdirs.filter(d => !/(test|sample|build-logic|buildSrc|bom)/i.test(d)).slice(0, 20).flatMap(d => [`${d}/build.gradle`, `${d}/build.gradle.kts`])]) {
@@ -195,10 +263,21 @@ export function buildMap(root, name, a, g) {
     .map(r => ({ path: r.id, summary: facts.get(r.id)?.summary || "", symbols: (facts.get(r.id)?.symbols || []).slice(0, 4), used_by: r.fan_in }));
   const entries = {}; const routes = [];
   for (const f of files) { const fx = facts.get(f); if (fx.entry) (entries[fx.entry] ||= []).push(f); fx.routes.forEach(r => routes.push({ route: r, file: f })); }
-  const langs = {}; files.forEach(f => (langs[languageOf(f)] = (langs[languageOf(f)] || 0) + 1));
+  // Real entry points first; examples, tests and tools only if nothing else qualifies.
+  for (const k of Object.keys(entries)) {
+    const main = entries[k].filter(f => !SUPPORT_RE.test(f));
+    // A program's main file reaches the most code, so the real binaries come first.
+    const reachOut = f => { const seen = new Set([f]), st = [f]; while (st.length) for (const w of a.out.get(st.pop()) || []) if (!seen.has(w)) { seen.add(w); st.push(w); } return seen.size; };
+    const sizes = new Map(entries[k].map(f => [f, reachOut(f)]));
+    entries[k] = (main.length ? main : entries[k]).sort((x, y) => sizes.get(y) - sizes.get(x) || x.localeCompare(y));
+  }
+  // .h is C++ if the repo has any C++ sources, otherwise C.
+  const anyCpp = files.some(f => CPP_SOURCE_EXT.has(ext(f)));
+  const lang = f => (ext(f) === ".h" ? (anyCpp ? "c++" : "c") : languageOf(f));
+  const langs = {}; files.forEach(f => (langs[lang(f)] = (langs[lang(f)] || 0) + 1));
   const readme = ["README.md", "README.rst", "README.txt", "README", "readme.md"].map(n => path.join(root, n)).find(p => fs.existsSync(p));
   return {
-    name, about: readme ? readmeBlurb(readme) : "",
+    name, about: readme ? readmeBlurb(readme, name) : "",
     languages: Object.fromEntries(Object.entries(langs).sort((x, y) => y[1] - x[1])), dependencies: dependencies(root),
     counts: { source_files: files.length, connected_files: a.nodes.length, packages: packages.length, imports: a.edgeCount },
     entry_points: Object.fromEntries(Object.entries(entries).map(([k, v]) => [k, v.slice(0, 12)])),
