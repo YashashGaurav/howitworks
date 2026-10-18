@@ -517,16 +517,21 @@ node skills/howitworks/scripts/cli.mjs map /path/to/some/repo
 
 ## Publishing
 
-**npm** (makes `npx howitworks-cli` work for everyone):
+Releases go to npm as [`howitworks-cli`](https://www.npmjs.com/package/howitworks-cli) through GitHub Actions (`.github/workflows/npm-publish.yml`), which runs the tests and publishes with a provenance attestation.
 
-```bash
-npm login
-npm publish
-```
+**To release a new version:**
 
-To publish under your own scope instead, set `"name": "@<your-npm-user>/howitworks"` in `package.json` and run `npm publish --access public`. The command becomes `npx @<your-npm-user>/howitworks`.
+1. In a pull request, bump `"version"` in `package.json` (and `package-lock.json`, e.g. with `npm version 0.3.5 --no-git-tag-version`). Merge it.
+2. On GitHub, open **Releases > Draft a new release**, create the tag `v0.3.5` on `main`, and click **Publish release**.
 
-**Skill installs** use this GitHub repo directly: `npx skills add koppulapr2230/howitworks` always installs the latest commit on `main`.
+The workflow stops if the tag doesn't match `package.json` or that version is already on npm.
+
+**One-time setup:**
+
+1. First publish: create an npm access token (npmjs.com > Access Tokens > Generate New Token, granular, with read and write access) and save it as the repository secret `NPM_TOKEN` (Settings > Secrets and variables > Actions). Then publish a release as above.
+2. Then switch to trusted publishing, which needs no stored secret: on npmjs.com open **howitworks-cli > Settings > Trusted publishing**, choose GitHub Actions, and enter user `koppulapr2230`, repository `howitworks`, workflow `npm-publish.yml`. Publish the next release with it, then delete the `NPM_TOKEN` secret and revoke the token.
+
+**Skill installs** use this GitHub repo directly: `npx skills add koppulapr2230/howitworks` installs the latest commit on `main`.
 
 ---
 
