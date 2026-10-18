@@ -7,8 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { insideRepo, read, safeWrite, MAX_FILE_BYTES } from "../skills/howitworks/scripts/lib/scan.mjs";
-import { validate, buildScenarioPrompt, renderHtml, claudeArgs } from "../skills/howitworks/scripts/lib/arch.mjs";
+import { insideRepo, read, safeWrite, buildGraph, MAX_FILE_BYTES } from "../skills/howitworks/scripts/lib/scan.mjs";
+import { validate, buildScenarioPrompt, renderHtml, claudeArgs, unsafePattern } from "../skills/howitworks/scripts/lib/arch.mjs";
 
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "../skills/howitworks/scripts/cli.mjs");
 const SECRET = "hw-secret-" + Math.random().toString(36).slice(2);
@@ -127,6 +127,49 @@ test("Claude Code is started locked down", () => {
   assert.equal(val("--permission-mode"), "dontAsk");
   assert.ok(!a.includes("--allowedTools") && !a.includes("--allowed-tools"), "a blanket allow rule would permit reads outside the repo");
   assert.equal(val("--model"), "sonnet");
+});
+
+test("a scan stops at its file and byte limits instead of exhausting memory", () => {
+  const s = sandbox();
+  for (let i = 0; i < 20; i++) fs.writeFileSync(path.join(s.repo, `src/m${i}.py`), `import b\n# ${"x".repeat(1000)}\n`);
+  const byFiles = buildGraph(s.repo, { maxFiles: 5 });
+  assert.equal(byFiles.files.length, 5); assert.ok(byFiles.limits.fileLimitHit);
+  const byBytes = buildGraph(s.repo, { maxBytes: 5000 });
+  assert.ok(byBytes.limits.byteLimitHit && byBytes.limits.unread > 0);
+  const total = [...byBytes.texts.values()].reduce((n, t) => n + t.length, 0);
+  assert.ok(total <= 5000, `read ${total} bytes past the limit`);
+  const normal = buildGraph(s.repo);
+  assert.ok(!normal.limits.fileLimitHit && !normal.limits.byteLimitHit);
+});
+
+test("an oversized spec is cut down and checked quickly", () => {
+  const n = 20000, nodes = Array.from({ length: n }, (_, i) => ({ id: "n" + i, group: "g", label: "N" + i }));
+  const steps = Array.from({ length: 50000 }, (_, i) => ({ node: "n" + (i % 100), text: "t" }));
+  const options = Array.from({ length: 12 }, (_, i) => ({ id: "o" + i, label: "O", choices: [{ value: "a", label: "A" }, { value: "b", label: "B" }] }));
+  const spec = { name: "x", groups: Array.from({ length: 100 }, (_, i) => ({ id: i ? "g" + i : "g", label: "G" })), nodes,
+    edges: Array.from({ length: 100000 }, (_, i) => ({ from: "n" + i % 150, to: "n" + (i + 1) % 150 })),
+    flows: [{ id: "f", title: "F", steps: steps.slice(0, 5000) }], changes: [],
+    scenario: { title: "s", options: options.slice(0, 2), steps } };
+  const t = Date.now();
+  const warns = validate(spec, null);
+  assert.ok(Date.now() - t < 5000, `validate took ${Date.now() - t} ms`);
+  assert.ok(spec.nodes.length <= 150 && spec.edges.length <= 1500 && spec.groups.length <= 20 && spec.flows[0].steps.length <= 60);
+  assert.ok(!spec.scenario || spec.scenario.steps.length <= 600);
+  assert.ok(warns.some(w => /too many/.test(w)));
+});
+
+test("the simulator's input pattern must be a simple regex", () => {
+  for (const p of ["(a+)+$", "((a+))+", "(a|ab)*c", "(\\w*\\s?)*x", "(.*a){20}", "(a*){2,}", "\\1", "(?<a>x)\\k<a>", "[", "x".repeat(201)])
+    assert.ok(unsafePattern(p), `should reject ${p}`);
+  for (const p of ["\"method\"\\s*:\\s*\"(?<method>\\w+)\"", "^(?<method>GET|POST)\\s+(?<path>\\S+)", "(?<topic>[\\w.-]+)/(?<part>\\d+)", "(a+){2}"])
+    assert.equal(unsafePattern(p), null, `should accept ${p}`);
+  const spec = { name: "x", groups: [{ id: "g", label: "G" }], nodes: [{ id: "a", group: "g", label: "A" }, { id: "b", group: "g", label: "B" }], edges: [], flows: [], changes: [],
+    scenario: { title: "s", input: { label: "in", value: "aaaa", pattern: "^(a+)+$" }, options: [{ id: "o", label: "O", choices: [{ value: "v", label: "V" }] }],
+      steps: [{ node: "a", text: "1" }, { node: "b", text: "2" }, { node: "a", text: "3", dir: "up" }] } };
+  const warns = validate(spec, null);
+  assert.ok(warns.some(w => /input pattern/.test(w)));
+  assert.equal(spec.scenario.input.pattern, undefined);
+  assert.ok(!renderHtml(spec).includes("(a+)+"));
 });
 
 const E2E = process.env.HOWITWORKS_E2E === "1";

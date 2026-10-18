@@ -1,6 +1,6 @@
 {
   "name": "howitworks-cli",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Draw how a repository works: an interactive architecture diagram with walkthroughs and a live call simulator, plus ARCHITECTURE.md for engineers and AI assistants.",
   "type": "module",
   "bin": {

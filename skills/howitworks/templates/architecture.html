@@ -473,7 +473,7 @@ const ARCH = /*__ARCH__*/null;
     const vals = {};
     const top = el("div", "sim-top");
     top.append(el("h2", null, SC.title || "Send a call"));
-    const url = el("input"); url.id = "simUrl"; url.type = "text"; url.spellcheck = false; url.value = (SC.input && SC.input.value) || ""; url.setAttribute("aria-label", (SC.input && SC.input.label) || "Input");
+    const url = el("input"); url.id = "simUrl"; url.type = "text"; url.maxLength = 2000; url.spellcheck = false; url.value = (SC.input && SC.input.value) || ""; url.setAttribute("aria-label", (SC.input && SC.input.label) || "Input");
     const send = el("button", "send", "Send call"); send.id = "sendBtn"; send.type = "button";
     const sp = el("div", "speed"); sp.append("Speed");
     const spSeg = el("div", "segs");
@@ -510,7 +510,12 @@ const ARCH = /*__ARCH__*/null;
     function compose() {
       const v = active(), vars = {};
       const pat = SC.input && SC.input.pattern;
-      if (pat) { const m = url.value.match(new RegExp(pat)); const dflt = (SC.input.value || "").match(new RegExp(pat)); Object.assign(vars, (dflt && dflt.groups) || {}, (m && m.groups) || {}); vars.input = url.value; }
+      if (pat) {
+        // The pattern was checked when the page was built; still bound the input it runs on and survive a bad one.
+        const match = t => { try { return pat.length <= 200 ? String(t || "").slice(0, 2000).match(new RegExp(pat)) : null; } catch (e) { return null; } };
+        const m = match(url.value), dflt = match(SC.input.value);
+        Object.assign(vars, (dflt && dflt.groups) || {}, (m && m.groups) || {}); vars.input = url.value.slice(0, 2000);
+      }
       else {
         try { const u = new URL(url.value.trim()); Object.assign(vars, { url: u.href, host: u.host, path: u.pathname + u.search, scheme: u.protocol.replace(":", "") }); }
         catch (e) { Object.assign(vars, { url: url.value, host: url.value, path: "/", scheme: "https" }); }

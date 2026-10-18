@@ -156,6 +156,12 @@ export function validate(spec, root) {
   const warns = [];
   for (const k of ["name", "groups", "nodes"]) if (!spec[k]) warns.push(`missing "${k}"`);
   spec.groups ||= []; spec.nodes ||= []; spec.edges ||= []; spec.flows ||= []; spec.changes ||= [];
+  // Bound the size of an untrusted spec so checking and drawing it stays fast.
+  for (const [k, max] of [["groups", 20], ["nodes", 150], ["edges", 1500], ["flows", 12], ["changes", 40]]) {
+    if (!Array.isArray(spec[k])) { warns.push(`"${k}" is not a list; ignored`); spec[k] = []; }
+    if (spec[k].length > max) { warns.push(`${spec[k].length} ${k} is too many; kept the first ${max}`); spec[k] = spec[k].slice(0, max); }
+  }
+  for (const f of spec.flows) if (Array.isArray(f.steps) && f.steps.length > 60) f.steps = f.steps.slice(0, 60);
   const ids = new Set(spec.nodes.map(n => n.id)), gids = new Set(spec.groups.map(g => g.id));
   for (const n of spec.nodes) {
     if (!gids.has(n.group)) warns.push(`node ${n.id}: unknown group "${n.group}"`);
@@ -197,6 +203,9 @@ export function archMarkdown(spec) {
 export function renderHtml(spec, { bare = false } = {}) {
   let page = fs.readFileSync(TEMPLATE, "utf8");
   const data = { ...spec, markdown: archMarkdown(spec) };
+  // Never ship a regex that could hang the viewer's browser, even if validate() was skipped.
+  const pat = spec.scenario && spec.scenario.input && spec.scenario.input.pattern;
+  if (pat != null && unsafePattern(pat)) data.scenario = { ...spec.scenario, input: { ...spec.scenario.input, pattern: undefined } };
   // Escape every "<" so no string in the spec can end the script element or change how the HTML parser reads it
   // ("</script>", "<!--<script>"). U+2028/2029 are escaped for older JavaScript engines.
   page = page.replace("/*__ARCH__*/null", () => JSON.stringify(data).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029"));
@@ -284,9 +293,46 @@ function activeVals(sc, vals) {
 }
 
 /** Play every combination of options; fix what can be fixed; drop the scenario if it cannot work. */
+// A regex from the spec runs in the browser of everyone who opens the page, so keep it simple:
+// short, valid, no backreferences, and no repeated group that itself contains a repeat or an
+// alternation, e.g. (a+)+, ((\w*)\s)*, (a|ab)*. Those are what backtrack for ages.
+export function unsafePattern(p) {
+  if (typeof p !== "string") return "not text";
+  if (p.length > 200) return "longer than 200 characters";
+  try { new RegExp(p); } catch (e) { return "not a valid regex"; }
+  if (/\\(?:[1-9]|k<)/.test(p)) return "uses backreferences";
+  const stack = [{ rep: false }];   // per open group: does it contain a repeat or "|"?
+  let i = 0, last = null;           // last = the group just closed, if the next token could quantify it
+  const isQuant = j => p[j] === "*" || p[j] === "+" || p[j] === "?" || (p[j] === "{" && /^\{\d*,?\d*\}/.test(p.slice(j)));
+  // "unbounded" here means a repeat that can run more than 10 times: *, +, {n,}, {n,m} or {n} with a limit above 10
+  const unbounded = j => { if (p[j] === "*" || p[j] === "+") return true; const m = p[j] === "{" && p.slice(j).match(/^\{(\d*)(,?)(\d*)\}/); if (!m) return false; const max = m[2] ? (m[3] === "" ? Infinity : +m[3]) : +m[1]; return max > 10; };
+  while (i < p.length) {
+    const c = p[i];
+    if (c === "\\") { i += 2; last = null; continue; }
+    if (c === "[") { i++; if (p[i] === "^") i++; if (p[i] === "]") i++; while (i < p.length && p[i] !== "]") i += p[i] === "\\" ? 2 : 1; i++; last = null; continue; }
+    if (c === "(") { stack.push({ rep: false }); i++; if (p[i] === "?") { i++; if (p[i] === "<" && p[i + 1] !== "=" && p[i + 1] !== "!") { while (i < p.length && p[i] !== ">") i++; i++; } else i++; } last = null; continue; }
+    if (c === ")") { const g = stack.pop(); i++; last = g; if (stack.length && g.rep) stack[stack.length - 1].rep = true; continue; }
+    if (c === "|") { stack[stack.length - 1].rep = true; i++; last = null; continue; }
+    if (isQuant(i)) {
+      if (last && last.rep && unbounded(i)) return "repeats a group that already repeats or alternates";
+      if (unbounded(i) || p[i] === "?") stack[stack.length - 1].rep = true;
+      i += p[i] === "{" ? p.slice(i).indexOf("}") + 1 : 1;
+      if (p[i] === "?" || p[i] === "+") i++;   // lazy or possessive suffix
+      last = null; continue;
+    }
+    i++; last = null;
+  }
+  return null;
+}
+
 export function validateScenario(spec) {
   const sc = spec.scenario, warns = [];
   if (!sc) return warns;
+  if (sc.input && sc.input.pattern != null) {
+    const why = unsafePattern(sc.input.pattern);
+    if (why) { warns.push(`scenario: input pattern ${why}; removed`); delete sc.input.pattern; }
+  }
+  if ((sc.steps || []).length > 600) { warns.push(`scenario: ${sc.steps.length} steps is too many; kept the first 600`); sc.steps = sc.steps.slice(0, 600); }
   const ids = new Set(spec.nodes.map(n => n.id));
   sc.options = (sc.options || []).filter(o => o && o.id && Array.isArray(o.choices) && o.choices.length);
   sc.steps = sc.steps || [];

@@ -24,9 +24,11 @@ export const ext = f => path.extname(f);
 export const base = f => f.split("/").pop();
 export const dirname = f => { const i = f.lastIndexOf("/"); return i < 0 ? "" : f.slice(0, i); };
 
-export function discover(root, includeTests = false) {
+export function discover(root, includeTests = false, limits = {}) {
+  const maxFiles = limits.maxFiles ?? MAX_FILES;
   const out = [];
   const walk = rel => {
+    if (out.length >= maxFiles) return;
     let entries;
     try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch { return; }
     if (!includeTests && rel && (TEST_DIR_RE.test(rel) || EXTRA_DIR_RE.test(rel) || (rel + "/").includes("src/test/"))) return;
@@ -38,16 +40,22 @@ export function discover(root, includeTests = false) {
         const x = ext(e.name);
         if (!ALL_EXT.has(x) || e.name.endsWith(".d.ts") || e.name.endsWith(".min.js")) continue;
         if (!includeTests && TEST_FILE_RE.test(e.name)) continue;
+        if (out.length >= maxFiles) { out.limited = true; return; }
         out.push(r);
       }
     }
   };
   walk("");
-  return out.sort();
+  const limited = !!out.limited;
+  const sorted = out.sort(); sorted.limited = limited;
+  return sorted;
 }
 
 // Files above this size are skipped: generated code, data dumps or a hostile repo.
 export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+// Limits for a whole scan, so a huge or hostile repo can't exhaust memory. Kafka is about 4,000 files and 31 MB.
+export const MAX_FILES = 50000;
+export const MAX_TOTAL_BYTES = 200 * 1024 * 1024;
 const realRoots = new Map();
 const realRoot = root => { if (!realRoots.has(root)) { let r; try { r = fs.realpathSync(root); } catch { r = path.resolve(root); } realRoots.set(root, r); } return realRoots.get(root); };
 
@@ -362,9 +370,19 @@ export class CppResolver {
   }
 }
 
-export function buildGraph(root, { includeTests = false, typeImports = false } = {}) {
-  const files = discover(root, includeTests);
-  const texts = new Map(files.map(f => [f, read(root, f)]));
+export function buildGraph(root, { includeTests = false, typeImports = false, maxFiles = MAX_FILES, maxBytes = MAX_TOTAL_BYTES } = {}) {
+  const found = discover(root, includeTests, { maxFiles });
+  const files = [...found], texts = new Map(), skipped = [];
+  let bytes = 0;
+  for (const f of files) {
+    if (bytes >= maxBytes) { skipped.push(f); continue; }
+    const t = readOrNull(root, f);
+    if (t == null) { texts.set(f, ""); continue; }
+    if (bytes + t.length > maxBytes) { skipped.push(f); continue; }
+    texts.set(f, t); bytes += t.length;
+  }
+  for (const f of skipped) texts.set(f, "");
+  const limits = { fileLimitHit: found.limited, byteLimitHit: skipped.length > 0, unread: skipped.length };
   const py = new PythonResolver(files, typeImports), jvm = new JvmResolver(files, texts), js = new JsResolver(root, files, typeImports), cpp = new CppResolver(files);
   const out = new Map(files.map(f => [f, new Set()]));
   for (const f of files) {
@@ -372,5 +390,5 @@ export function buildGraph(root, { includeTests = false, typeImports = false } =
     const d = PY_EXT.has(x) ? py.deps(f, texts.get(f)) : JVM_EXT.has(x) ? jvm.deps(f, texts.get(f)) : CPP_EXT.has(x) ? cpp.deps(f, texts.get(f)) : js.deps(f, texts.get(f));
     for (const t of d) out.get(f).add(t);
   }
-  return { files, texts, out, py, jvm };
+  return { files, texts, out, py, jvm, limits };
 }

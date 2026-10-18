@@ -94,6 +94,8 @@ function openFile(file) {
 function scanRepo(root, name) {
   const t = Date.now();
   const g = buildGraph(root);
+  if (g.limits.fileLimitHit) console.warn(`warning: stopped after ${g.files.length.toLocaleString()} source files; the rest of the repo was not scanned. Point howitworks at a subfolder for a fuller picture.`);
+  if (g.limits.byteLimitHit) console.warn(`warning: ${g.limits.unread.toLocaleString()} files were not read because the scan reached its size limit. Point howitworks at a subfolder for a fuller picture.`);
   let a;
   try { a = analyze(g); } catch (e) { fail(e.message); }
   const map = buildMap(root, name, a, g);
