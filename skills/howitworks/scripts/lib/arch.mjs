@@ -303,24 +303,33 @@ export function unsafePattern(p) {
   if (/\\(?:[1-9]|k<)/.test(p)) return "uses backreferences";
   const stack = [{ rep: false }];   // per open group: does it contain a repeat or "|"?
   let i = 0, last = null;           // last = the group just closed, if the next token could quantify it
+  let atom = null, prevRep = null;  // atom = text of the token just read; prevRep = {text, end} of the last unbounded repeat
+  let reps = 0;
   const isQuant = j => p[j] === "*" || p[j] === "+" || p[j] === "?" || (p[j] === "{" && /^\{\d*,?\d*\}/.test(p.slice(j)));
   // "unbounded" here means a repeat that can run more than 10 times: *, +, {n,}, {n,m} or {n} with a limit above 10
   const unbounded = j => { if (p[j] === "*" || p[j] === "+") return true; const m = p[j] === "{" && p.slice(j).match(/^\{(\d*)(,?)(\d*)\}/); if (!m) return false; const max = m[2] ? (m[3] === "" ? Infinity : +m[3]) : +m[1]; return max > 10; };
   while (i < p.length) {
     const c = p[i];
-    if (c === "\\") { i += 2; last = null; continue; }
-    if (c === "[") { i++; if (p[i] === "^") i++; if (p[i] === "]") i++; while (i < p.length && p[i] !== "]") i += p[i] === "\\" ? 2 : 1; i++; last = null; continue; }
+    if (c === "\\") { atom = { text: p.slice(i, i + 2), start: i }; i += 2; last = null; continue; }
+    if (c === "[") { const st = i; i++; if (p[i] === "^") i++; if (p[i] === "]") i++; while (i < p.length && p[i] !== "]") i += p[i] === "\\" ? 2 : 1; i++; atom = { text: p.slice(st, i), start: st }; last = null; continue; }
     if (c === "(") { stack.push({ rep: false }); i++; if (p[i] === "?") { i++; if (p[i] === "<" && p[i + 1] !== "=" && p[i + 1] !== "!") { while (i < p.length && p[i] !== ">") i++; i++; } else i++; } last = null; continue; }
     if (c === ")") { const g = stack.pop(); i++; last = g; if (stack.length && g.rep) stack[stack.length - 1].rep = true; continue; }
     if (c === "|") { stack[stack.length - 1].rep = true; i++; last = null; continue; }
     if (isQuant(i)) {
       if (last && last.rep && unbounded(i)) return "repeats a group that already repeats or alternates";
+      if (unbounded(i)) {
+        if (++reps > 6) return "has more than 6 open-ended repeats";
+        // the same token repeated twice in a row, e.g. \d*\d* or a+a*, backtracks polynomially
+        if (atom && prevRep && prevRep.end === atom.start && prevRep.text === atom.text) return "repeats the same token back to back";
+      }
       if (unbounded(i) || p[i] === "?") stack[stack.length - 1].rep = true;
+      const wasUnbounded = unbounded(i);
       i += p[i] === "{" ? p.slice(i).indexOf("}") + 1 : 1;
       if (p[i] === "?" || p[i] === "+") i++;   // lazy or possessive suffix
-      last = null; continue;
+      prevRep = wasUnbounded && atom ? { text: atom.text, end: i } : null;
+      atom = null; last = null; continue;
     }
-    i++; last = null;
+    atom = { text: c, start: i }; i++; last = null;
   }
   return null;
 }

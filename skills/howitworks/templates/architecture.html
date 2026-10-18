@@ -507,14 +507,30 @@ const ARCH = /*__ARCH__*/null;
     send.addEventListener("click", () => { if (running) { stopRun(); } else startRun(); });
     url.addEventListener("keydown", e => { if (e.key === "Enter") startRun(); });
 
-    function compose() {
+    /* The input pattern comes from the description, so it never runs on the page's own thread: it runs in a
+       Web Worker that is killed after 150 ms. A pattern that backtracks for too long just matches nothing.
+       Without Worker support the pattern is skipped. */
+    let rxWorker = null;
+    const RX_SRC = "onmessage=function(e){var m=null;try{m=String(e.data[1]).match(new RegExp(e.data[0]));}catch(x){}postMessage(m&&m.groups?Object.assign({},m.groups):null);};";
+    function groupsOf(pat, text) {
+      return new Promise(resolve => {
+        if (!pat || typeof pat !== "string" || pat.length > 200 || typeof Worker === "undefined") return resolve(null);
+        let w;
+        try { w = rxWorker || (rxWorker = new Worker(URL.createObjectURL(new Blob([RX_SRC], { type: "text/javascript" })))); }
+        catch (e) { return resolve(null); }
+        const timer = setTimeout(() => { w.terminate(); if (rxWorker === w) rxWorker = null; resolve(null); }, 150);
+        w.onmessage = e => { clearTimeout(timer); resolve(e.data); };
+        w.onerror = () => { clearTimeout(timer); resolve(null); };
+        w.postMessage([pat, String(text || "").slice(0, 2000)]);
+      });
+    }
+
+    async function compose() {
       const v = active(), vars = {};
       const pat = SC.input && SC.input.pattern;
       if (pat) {
-        // The pattern was checked when the page was built; still bound the input it runs on and survive a bad one.
-        const match = t => { try { return pat.length <= 200 ? String(t || "").slice(0, 2000).match(new RegExp(pat)) : null; } catch (e) { return null; } };
-        const m = match(url.value), dflt = match(SC.input.value);
-        Object.assign(vars, (dflt && dflt.groups) || {}, (m && m.groups) || {}); vars.input = url.value.slice(0, 2000);
+        const dflt = await groupsOf(pat, SC.input.value), m = await groupsOf(pat, url.value);
+        Object.assign(vars, dflt || {}, m || {}); vars.input = url.value.slice(0, 2000);
       }
       else {
         try { const u = new URL(url.value.trim()); Object.assign(vars, { url: u.href, host: u.host, path: u.pathname + u.search, scheme: u.protocol.replace(":", "") }); }
@@ -570,7 +586,8 @@ const ARCH = /*__ARCH__*/null;
       stopRun();
       const tok = ++runToken; running = true; mode = "live"; flow = null; setFlowButtons();
       send.dataset.running = "true"; send.textContent = "Stop";
-      const steps = compose();
+      const steps = await compose();
+      if (tok !== runToken) return;
       clearMarks(); root.classList.add("live");
       log.replaceChildren(); flight.textContent = ""; renderLive();
       let t = 0, prev = null, shown = 0; const total = steps.filter(s => !s.quiet).length;

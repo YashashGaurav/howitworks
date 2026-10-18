@@ -65,7 +65,8 @@ export function insideRepo(root, rel) {
   const base = realRoot(root);
   let real; try { real = fs.realpathSync(path.join(root, rel)); } catch { return null; }
   if (real !== base && !real.startsWith(base + path.sep)) return null;
-  try { if (!fs.statSync(real).isFile()) return null; } catch { return null; }
+  // A hard link has an in-repo path but may be the same file as one outside the repo; git never creates them.
+  try { const st = fs.statSync(real); if (!st.isFile() || st.nlink > 1) return null; } catch { return null; }
   return real;
 }
 
@@ -87,13 +88,17 @@ export function safeWrite(file, data, baseDir = path.dirname(file)) {
   const dir = path.dirname(path.resolve(file));
   fs.mkdirSync(dir, { recursive: true });
   const real = p => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
-  const base = real(baseDir), rdir = real(dir);
-  if (rdir !== base && !rdir.startsWith(base + path.sep)) throw new Error(`refusing to write ${file}: its folder leads outside ${baseDir}`);
+  const base = real(baseDir);
+  const checkDir = () => { const rdir = real(dir); if (rdir !== base && !rdir.startsWith(base + path.sep)) throw new Error(`refusing to write ${file}: its folder leads outside ${baseDir}`); };
+  checkDir();
   let st = null; try { st = fs.lstatSync(file); } catch {}
   if (st && (!st.isFile() || st.nlink > 1)) throw new Error(`refusing to write ${file}: it is a ${st.isSymbolicLink() ? "symbolic link" : st.isFile() ? "hard link" : "not a regular file"}`);
-  const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
-  const fd = fs.openSync(file, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | NOFOLLOW, 0o644);
+  // Write a new file next to the target, check the folder again, then rename over the target. rename()
+  // replaces the directory entry itself, so it can never write through a link that appears in between.
+  const tmp = path.join(dir, `.${path.basename(file)}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`);
+  const fd = fs.openSync(tmp, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | (fs.constants.O_NOFOLLOW || 0), 0o644);
   try { fs.writeFileSync(fd, data); } finally { fs.closeSync(fd); }
+  try { checkDir(); fs.renameSync(tmp, file); } catch (e) { try { fs.unlinkSync(tmp); } catch {} throw e; }
 }
 
 export const countLines = t => t.split("\n").filter(l => l.trim()).length;
