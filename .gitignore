@@ -1,0 +1,4 @@
+node_modules/
+*.tgz
+.howitworks/
+.DS_Store

@@ -1,0 +1,1468 @@
+{
+ "name": "Spring PetClinic",
+ "summary": "PetClinic is a Spring Boot web app for a veterinary clinic: find owners, add pets, record visits, list vets. Each browser request goes through Spring MVC to a controller, which loads or saves data through Spring Data JPA repositories and returns a Thymeleaf page. Data lives in an in-memory H2 database by default, seeded with sample owners, pets and vets at startup.",
+ "groups": [
+  {
+   "id": "client",
+   "label": "Browser"
+  },
+  {
+   "id": "web",
+   "label": "Spring MVC",
+   "description": "Framework code that routes requests, binds form fields and renders pages. The app configures it; Spring Boot provides it."
+  },
+  {
+   "id": "ctl",
+   "label": "Controllers",
+   "description": "One class per area of the app. Each method handles one URL."
+  },
+  {
+   "id": "data",
+   "label": "Data access",
+   "description": "Spring Data JPA repository interfaces: Spring generates the SQL from method names and annotations."
+  },
+  {
+   "id": "store",
+   "label": "Database"
+  },
+  {
+   "id": "model",
+   "label": "Domain model",
+   "description": "JPA entities mapped to tables."
+  }
+ ],
+ "nodes": [
+  {
+   "id": "browser",
+   "group": "client",
+   "kind": "external",
+   "label": "Browser",
+   "description": "Sends page requests and form posts; follows redirects."
+  },
+  {
+   "id": "dispatcher",
+   "group": "web",
+   "kind": "core",
+   "label": "Request routing",
+   "description": "Spring's DispatcherServlet matches each URL to a controller method. The app adds one interceptor: ?lang=de switches the page language, remembered in the session.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java",
+    "src/main/java/org/springframework/samples/petclinic/system/WebConfiguration.java"
+   ]
+  },
+  {
+   "id": "binder",
+   "group": "web",
+   "kind": "core",
+   "label": "Form binding and validation",
+   "description": "Copies form fields onto entities and validates them. PetValidator checks pet name, type and birth date; PetTypeFormatter turns 'cat' into a PetType; @Valid applies the entity's own constraints, like a 10-digit telephone.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/PetValidator.java",
+    "src/main/java/org/springframework/samples/petclinic/owner/PetTypeFormatter.java"
+   ]
+  },
+  {
+   "id": "views",
+   "group": "web",
+   "kind": "core",
+   "label": "Thymeleaf views",
+   "description": "HTML templates rendered on the server with the model the controller filled in. A shared layout wraps every page; error.html shows failures.",
+   "files": [
+    "src/main/resources/templates/owners/ownersList.html",
+    "src/main/resources/templates/owners/ownerDetails.html",
+    "src/main/resources/templates/pets/createOrUpdatePetForm.html",
+    "src/main/resources/templates/error.html"
+   ]
+  },
+  {
+   "id": "ownerCtl",
+   "group": "ctl",
+   "kind": "core",
+   "label": "OwnerController",
+   "description": "Find owners by last name (paged, 5 per page), show one owner with their pets and visits, create and edit owners.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/OwnerController.java"
+   ]
+  },
+  {
+   "id": "petCtl",
+   "group": "ctl",
+   "kind": "core",
+   "label": "PetController",
+   "description": "Add and edit an owner's pets. Rejects duplicate names for the same owner and birth dates in the future.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/PetController.java"
+   ]
+  },
+  {
+   "id": "visitCtl",
+   "group": "ctl",
+   "kind": "core",
+   "label": "VisitController",
+   "description": "Book a visit for a pet. The visit date must be in the future.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/VisitController.java"
+   ]
+  },
+  {
+   "id": "vetCtl",
+   "group": "ctl",
+   "kind": "core",
+   "label": "VetController",
+   "description": "Lists vets as an HTML page (/vets.html, paged) or as JSON (/vets).",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/vet/VetController.java"
+   ]
+  },
+  {
+   "id": "systemCtl",
+   "group": "ctl",
+   "kind": "core",
+   "label": "Welcome and error demo",
+   "description": "The home page, and /oups, which throws on purpose to show the error page.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/system/WelcomeController.java",
+    "src/main/java/org/springframework/samples/petclinic/system/CrashController.java"
+   ]
+  },
+  {
+   "id": "ownerRepo",
+   "group": "data",
+   "kind": "core",
+   "label": "OwnerRepository",
+   "description": "Loads owners by id or by last-name prefix (paged) and saves them. Saving an owner also saves its new pets and visits (cascade).",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/OwnerRepository.java"
+   ]
+  },
+  {
+   "id": "petTypeRepo",
+   "group": "data",
+   "kind": "core",
+   "label": "PetTypeRepository",
+   "description": "Lists the pet types (cat, dog, lizard...) for the pet form's dropdown.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/PetTypeRepository.java"
+   ]
+  },
+  {
+   "id": "vetRepo",
+   "group": "data",
+   "kind": "core",
+   "label": "VetRepository",
+   "description": "Lists vets with their specialties. Both findAll methods are cached in the 'vets' cache.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/vet/VetRepository.java"
+   ]
+  },
+  {
+   "id": "cache",
+   "group": "data",
+   "kind": "store",
+   "label": "Vets cache",
+   "description": "A JCache cache named 'vets' (Caffeine), created in CacheConfiguration. Repeated vet lookups skip the database.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/system/CacheConfiguration.java"
+   ]
+  },
+  {
+   "id": "db",
+   "group": "store",
+   "kind": "external",
+   "label": "Database",
+   "description": "H2 in memory by default. Run with the mysql or postgres profile to use those instead; connection settings are in the matching properties file.",
+   "files": [
+    "src/main/resources/application.properties",
+    "src/main/resources/application-mysql.properties",
+    "src/main/resources/application-postgres.properties"
+   ]
+  },
+  {
+   "id": "sqlInit",
+   "group": "store",
+   "kind": "store",
+   "label": "Schema and sample data",
+   "description": "SQL scripts run at startup for the chosen database: tables, a unique (owner, pet name) constraint, and sample owners, pets and vets.",
+   "files": [
+    "src/main/resources/db/h2/schema.sql",
+    "src/main/resources/db/h2/data.sql"
+   ]
+  },
+  {
+   "id": "ownerModel",
+   "group": "model",
+   "kind": "core",
+   "label": "Owners, pets, visits",
+   "description": "Owner has many Pets (loaded eagerly, ordered by name); Pet has a PetType and many Visits.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/owner/Owner.java",
+    "src/main/java/org/springframework/samples/petclinic/owner/Pet.java",
+    "src/main/java/org/springframework/samples/petclinic/owner/Visit.java",
+    "src/main/java/org/springframework/samples/petclinic/owner/PetType.java"
+   ]
+  },
+  {
+   "id": "vetModel",
+   "group": "model",
+   "kind": "core",
+   "label": "Vets and specialties",
+   "description": "Vet has many Specialties. Vets wraps the list for the JSON endpoint.",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/vet/Vet.java",
+    "src/main/java/org/springframework/samples/petclinic/vet/Specialty.java",
+    "src/main/java/org/springframework/samples/petclinic/vet/Vets.java"
+   ]
+  },
+  {
+   "id": "base",
+   "group": "model",
+   "kind": "core",
+   "label": "Base entities",
+   "description": "Shared superclasses: BaseEntity (id), NamedEntity (name), Person (first and last name).",
+   "files": [
+    "src/main/java/org/springframework/samples/petclinic/model/BaseEntity.java",
+    "src/main/java/org/springframework/samples/petclinic/model/NamedEntity.java",
+    "src/main/java/org/springframework/samples/petclinic/model/Person.java"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "browser",
+   "to": "dispatcher",
+   "label": "HTTP request"
+  },
+  {
+   "from": "dispatcher",
+   "to": "binder",
+   "label": "bind and validate"
+  },
+  {
+   "from": "dispatcher",
+   "to": "ownerCtl"
+  },
+  {
+   "from": "dispatcher",
+   "to": "petCtl"
+  },
+  {
+   "from": "dispatcher",
+   "to": "visitCtl"
+  },
+  {
+   "from": "dispatcher",
+   "to": "vetCtl"
+  },
+  {
+   "from": "dispatcher",
+   "to": "systemCtl"
+  },
+  {
+   "from": "dispatcher",
+   "to": "views",
+   "label": "render"
+  },
+  {
+   "from": "binder",
+   "to": "petTypeRepo",
+   "label": "look up type"
+  },
+  {
+   "from": "ownerCtl",
+   "to": "ownerRepo"
+  },
+  {
+   "from": "petCtl",
+   "to": "ownerRepo"
+  },
+  {
+   "from": "petCtl",
+   "to": "petTypeRepo"
+  },
+  {
+   "from": "visitCtl",
+   "to": "ownerRepo"
+  },
+  {
+   "from": "vetCtl",
+   "to": "vetRepo"
+  },
+  {
+   "from": "vetRepo",
+   "to": "cache",
+   "label": "@Cacheable"
+  },
+  {
+   "from": "ownerRepo",
+   "to": "db",
+   "label": "SQL via JPA"
+  },
+  {
+   "from": "petTypeRepo",
+   "to": "db"
+  },
+  {
+   "from": "vetRepo",
+   "to": "db"
+  },
+  {
+   "from": "sqlInit",
+   "to": "db",
+   "label": "at startup"
+  },
+  {
+   "from": "ownerRepo",
+   "to": "ownerModel",
+   "label": "maps rows"
+  },
+  {
+   "from": "vetRepo",
+   "to": "vetModel",
+   "label": "maps rows"
+  },
+  {
+   "from": "ownerModel",
+   "to": "base",
+   "label": "extends"
+  },
+  {
+   "from": "vetModel",
+   "to": "base",
+   "label": "extends"
+  }
+ ],
+ "flows": [
+  {
+   "id": "find",
+   "title": "Find an owner",
+   "steps": [
+    {
+     "node": "browser",
+     "text": "The user searches for a last name: GET /owners?lastName=Davis."
+    },
+    {
+     "node": "dispatcher",
+     "text": "Spring routes it to OwnerController.processFindForm."
+    },
+    {
+     "node": "ownerCtl",
+     "text": "The controller asks for page 1 of owners whose last name starts with Davis, 5 per page."
+    },
+    {
+     "node": "ownerRepo",
+     "text": "findByLastNameStartingWith becomes a LIKE query."
+    },
+    {
+     "node": "db",
+     "text": "Two owners match."
+    },
+    {
+     "node": "ownerCtl",
+     "text": "Several matches, so it shows the list. One match would redirect straight to that owner; none shows the form with 'not found'."
+    },
+    {
+     "node": "views",
+     "text": "ownersList.html renders the table."
+    }
+   ]
+  },
+  {
+   "id": "addPet",
+   "title": "Add a pet",
+   "steps": [
+    {
+     "node": "browser",
+     "text": "The user submits the new-pet form for owner 1."
+    },
+    {
+     "node": "petCtl",
+     "text": "Before the handler runs, @ModelAttribute methods load the owner and the pet types."
+    },
+    {
+     "node": "binder",
+     "text": "Form fields are copied onto a new Pet and PetValidator checks it."
+    },
+    {
+     "node": "petCtl",
+     "text": "It also rejects a name this owner already uses and a birth date in the future."
+    },
+    {
+     "node": "ownerRepo",
+     "text": "The pet is added to the owner and the owner is saved; the new pet is inserted by cascade."
+    },
+    {
+     "node": "db",
+     "text": "INSERT INTO pets. The unique (owner, name) constraint is a second guard against duplicates."
+    },
+    {
+     "node": "browser",
+     "text": "The browser is redirected to the owner's page, which shows the new pet."
+    }
+   ]
+  },
+  {
+   "id": "vets",
+   "title": "List vets with caching",
+   "steps": [
+    {
+     "node": "browser",
+     "text": "GET /vets asks for the vet list as JSON."
+    },
+    {
+     "node": "vetCtl",
+     "text": "The controller wraps the list in a Vets object and returns it as the response body."
+    },
+    {
+     "node": "vetRepo",
+     "text": "findAll is @Cacheable(\"vets\")."
+    },
+    {
+     "node": "cache",
+     "text": "The first call misses and runs the query; later calls are served from the cache."
+    },
+    {
+     "node": "db",
+     "text": "On a miss: vets and their specialties are loaded."
+    }
+   ]
+  },
+  {
+   "id": "startup",
+   "title": "Start the app",
+   "steps": [
+    {
+     "node": "dispatcher",
+     "text": "PetClinicApplication starts Spring Boot, which configures Spring MVC, JPA and Thymeleaf."
+    },
+    {
+     "node": "sqlInit",
+     "text": "Spring Boot runs db/h2/schema.sql and data.sql (or the mysql or postgres versions)."
+    },
+    {
+     "node": "db",
+     "text": "The database now has 10 owners, 13 pets and 6 vets."
+    },
+    {
+     "node": "cache",
+     "text": "CacheConfiguration creates the empty 'vets' cache."
+    }
+   ]
+  }
+ ],
+ "changes": [
+  {
+   "task": "Add a field to owners (for example email)",
+   "nodes": [
+    "ownerModel",
+    "sqlInit",
+    "views",
+    "ownerCtl"
+   ]
+  },
+  {
+   "task": "Change pet validation rules",
+   "nodes": [
+    "binder",
+    "petCtl"
+   ]
+  },
+  {
+   "task": "Add a new page",
+   "nodes": [
+    "ownerCtl",
+    "views",
+    "dispatcher"
+   ]
+  },
+  {
+   "task": "Use MySQL or PostgreSQL",
+   "nodes": [
+    "db",
+    "sqlInit"
+   ]
+  },
+  {
+   "task": "Change search paging (5 per page)",
+   "nodes": [
+    "ownerCtl",
+    "ownerRepo"
+   ]
+  },
+  {
+   "task": "Cache another query",
+   "nodes": [
+    "cache",
+    "vetRepo"
+   ]
+  },
+  {
+   "task": "Change how errors are shown",
+   "nodes": [
+    "views",
+    "systemCtl"
+   ]
+  }
+ ],
+ "scenario": {
+  "title": "Send a request",
+  "eventsLabel": "Code path (simulated timing)",
+  "input": {
+   "label": "Last name / owner id",
+   "value": "Davis  owner=1",
+   "pattern": "^\\s*(?<q>[\\w'-]*)\\s+owner=(?<ownerId>\\d+)"
+  },
+  "options": [
+   {
+    "id": "request",
+    "label": "Request",
+    "choices": [
+     {
+      "value": "find",
+      "label": "Find owners"
+     },
+     {
+      "value": "addPet",
+      "label": "Add a pet"
+     },
+     {
+      "value": "vets",
+      "label": "Vets as JSON"
+     }
+    ]
+   },
+   {
+    "id": "matches",
+    "label": "Owners found",
+    "enabledWhen": {
+     "request": "find"
+    },
+    "choices": [
+     {
+      "value": "several",
+      "label": "Several"
+     },
+     {
+      "value": "one",
+      "label": "Exactly one"
+     },
+     {
+      "value": "none",
+      "label": "None"
+     }
+    ]
+   },
+   {
+    "id": "form",
+    "label": "Pet form",
+    "enabledWhen": {
+     "request": "addPet"
+    },
+    "choices": [
+     {
+      "value": "valid",
+      "label": "Valid"
+     },
+     {
+      "value": "invalid",
+      "label": "Missing birth date"
+     },
+     {
+      "value": "duplicate",
+      "label": "Name already used"
+     }
+    ]
+   },
+   {
+    "id": "owner",
+    "label": "Owner id",
+    "enabledWhen": {
+     "request": "addPet"
+    },
+    "choices": [
+     {
+      "value": "exists",
+      "label": "Exists"
+     },
+     {
+      "value": "missing",
+      "label": "Not in database"
+     }
+    ]
+   },
+   {
+    "id": "cache",
+    "label": "Vets cache",
+    "enabledWhen": {
+     "request": "vets"
+    },
+    "choices": [
+     {
+      "value": "cold",
+      "label": "Empty (first call)"
+     },
+     {
+      "value": "warm",
+      "label": "Already cached"
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The user searches for owners named \"{q}\".",
+    "when": {
+     "request": "find"
+    },
+    "show": "GET /owners?lastName={q} HTTP/1.1\nAccept: text/html"
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The user submits the new-pet form: name Rex, a cat, born 2025-03-14.",
+    "when": {
+     "request": "addPet",
+     "form": "valid"
+    },
+    "show": "POST /owners/{ownerId}/pets/new HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nname=Rex&birthDate=2025-03-14&type=cat"
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The user submits the new-pet form but leaves the birth date empty.",
+    "when": {
+     "request": "addPet",
+     "form": "invalid"
+    },
+    "show": "POST /owners/{ownerId}/pets/new HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nname=Rex&birthDate=&type=cat"
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The user submits the new-pet form with the name Leo, which owner 1 already uses for a cat.",
+    "when": {
+     "request": "addPet",
+     "form": "duplicate"
+    },
+    "show": "POST /owners/{ownerId}/pets/new HTTP/1.1\nContent-Type: application/x-www-form-urlencoded\n\nname=Leo&birthDate=2025-03-14&type=cat"
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "A script asks for the vet list as JSON.",
+    "when": {
+     "request": "vets"
+    },
+    "show": "GET /vets HTTP/1.1\nAccept: application/json"
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "DispatcherServlet matches /owners to OwnerController.processFindForm. The locale interceptor runs first (no ?lang, so the language stays).",
+    "when": {
+     "request": "find"
+    },
+    "events": [
+     "DispatcherServlet.doDispatch()",
+     "LocaleChangeInterceptor.preHandle()",
+     "-> OwnerController.processFindForm()"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "DispatcherServlet matches the URL to PetController.processCreationForm.",
+    "when": {
+     "request": "addPet"
+    },
+    "events": [
+     "DispatcherServlet.doDispatch()",
+     "LocaleChangeInterceptor.preHandle()",
+     "-> PetController.processCreationForm()"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "DispatcherServlet matches /vets to VetController.showResourcesVetList.",
+    "when": {
+     "request": "vets"
+    },
+    "events": [
+     "DispatcherServlet.doDispatch()",
+     "-> VetController.showResourcesVetList()"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "down",
+    "text": "processFindForm trims the last name and asks for page 1, 5 owners per page.",
+    "when": {
+     "request": "find"
+    },
+    "events": [
+     "processFindForm(page=1, lastName=\"{q}\")",
+     "PageRequest.of(0, 5)"
+    ]
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "down",
+    "text": "findByLastNameStartingWith(\"{q}\") is derived from the method name: a LIKE query plus a count for paging.",
+    "when": {
+     "request": "find"
+    },
+    "events": [
+     "OwnerRepository.findByLastNameStartingWith(\"{q}\", page 0 size 5)"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "Spring Data runs the page query and the count query.",
+    "when": {
+     "request": "find"
+    },
+    "events": [
+     "SELECT owners WHERE last_name LIKE '{q}%' LIMIT 5",
+     "SELECT count(*)"
+    ],
+    "ms": 3,
+    "show": "select o.* from owners o\n where o.last_name like '{q}%'\n limit 5 offset 0;\nselect count(o.id) from owners o\n where o.last_name like '{q}%'"
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "up",
+    "text": "Two owners come back.",
+    "when": {
+     "request": "find",
+     "matches": "several"
+    },
+    "events": [
+     "Page<Owner>: 2 results, 1 page"
+    ],
+    "show": "Page 1 of 1\n  Owner{id=2, Betty Davis, Sun Prairie}\n  Owner{id=4, Harold Davis, Windsor}"
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "up",
+    "text": "Exactly one owner comes back.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "Page<Owner>: 1 result"
+    ],
+    "show": "Page 1 of 1\n  Owner{id=1, George Franklin, Madison}"
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "up",
+    "text": "Nothing matches.",
+    "when": {
+     "request": "find",
+     "matches": "none"
+    },
+    "events": [
+     "Page<Owner>: 0 results"
+    ],
+    "show": "Page 1 of 0 (empty)"
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "up",
+    "text": "More than one match: the controller puts the page of owners and the paging numbers in the model and chooses owners/ownersList.",
+    "when": {
+     "request": "find",
+     "matches": "several"
+    },
+    "events": [
+     "addPaginationModel(page=1)",
+     "view: owners/ownersList"
+    ]
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "up",
+    "text": "Exactly one match: no list needed, it redirects straight to that owner's page.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "return \"redirect:/owners/1\""
+    ]
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "up",
+    "text": "No match: it adds a \"not found\" error to the lastName field and shows the search form again.",
+    "when": {
+     "request": "find",
+     "matches": "none"
+    },
+    "events": [
+     "result.rejectValue(\"lastName\", \"notFound\")",
+     "view: owners/findOwners"
+    ]
+   },
+   {
+    "node": "views",
+    "dir": "up",
+    "text": "ownersList.html renders a table of the 2 owners with page links.",
+    "when": {
+     "request": "find",
+     "matches": "several"
+    },
+    "events": [
+     "Thymeleaf: owners/ownersList"
+    ],
+    "ms": 4
+   },
+   {
+    "node": "views",
+    "dir": "up",
+    "text": "findOwners.html renders the search form with the error under the last name field.",
+    "when": {
+     "request": "find",
+     "matches": "none"
+    },
+    "events": [
+     "Thymeleaf: owners/findOwners"
+    ],
+    "ms": 3
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The browser follows the redirect: GET /owners/1.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "302 Found -> /owners/1"
+    ],
+    "ms": 1,
+    "show": "GET /owners/1 HTTP/1.1"
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "Routed to OwnerController.showOwner.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "DispatcherServlet -> OwnerController.showOwner(1)"
+    ]
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "down",
+    "text": "showOwner(1) loads the owner for the details page.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    }
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "down",
+    "text": "findById(1)",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "OwnerRepository.findById(1)"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "The owner and, eagerly, their pets and visits are loaded.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "SELECT owner 1 with pets and visits"
+    ],
+    "ms": 2,
+    "show": "select o.*, p.*, v.*\n  from owners o\n  left join pets p on p.owner_id = o.id\n  left join visits v on v.pet_id = p.id\n where o.id = 1"
+   },
+   {
+    "node": "views",
+    "dir": "up",
+    "text": "ownerDetails.html renders the owner, their pets and visits.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "Thymeleaf: owners/ownerDetails"
+    ],
+    "ms": 4
+   },
+   {
+    "node": "browser",
+    "dir": "up",
+    "text": "The page shows Betty Davis and Harold Davis.",
+    "when": {
+     "request": "find",
+     "matches": "several"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nOwners\n  Betty Davis    638 Cardinal Ave.  Sun Prairie  Basil\n  Harold Davis   563 Friendly St.   Windsor      Iggy"
+   },
+   {
+    "node": "browser",
+    "dir": "up",
+    "text": "The page shows George Franklin's details, pets and visits.",
+    "when": {
+     "request": "find",
+     "matches": "one"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nOwner Information: George Franklin, Madison\nPets and Visits: Leo (cat)"
+   },
+   {
+    "node": "browser",
+    "dir": "up",
+    "text": "The search form comes back with \"has not been found\" under the last name.",
+    "when": {
+     "request": "find",
+     "matches": "none"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nFind Owners\n  Last name: [{q}]  has not been found"
+   },
+   {
+    "node": "petCtl",
+    "dir": "down",
+    "text": "Before the handler runs, Spring calls the @ModelAttribute methods: findOwner({ownerId}) and populatePetTypes().",
+    "when": {
+     "request": "addPet"
+    },
+    "events": [
+     "@ModelAttribute findOwner(ownerId={ownerId})"
+    ]
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "down",
+    "text": "findById({ownerId})",
+    "when": {
+     "request": "addPet"
+    },
+    "events": [
+     "OwnerRepository.findById({ownerId})"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "Look up the owner, with their pets loaded eagerly.",
+    "when": {
+     "request": "addPet"
+    },
+    "events": [
+     "SELECT owner {ownerId} with pets"
+    ],
+    "ms": 2,
+    "show": "select o.*, p.* from owners o\n  left join pets p on p.owner_id = o.id\n where o.id = {ownerId}"
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "fail",
+    "text": "No owner with id {ownerId}: findById returns empty.",
+    "when": {
+     "request": "addPet",
+     "owner": "missing"
+    },
+    "events": [
+     "Optional.empty"
+    ]
+   },
+   {
+    "node": "petCtl",
+    "dir": "fail",
+    "text": "findOwner throws IllegalArgumentException(\"Owner not found with id: {ownerId}...\"). Nothing in the app handles it.",
+    "when": {
+     "request": "addPet",
+     "owner": "missing"
+    },
+    "events": [
+     "IllegalArgumentException: Owner not found with id: {ownerId}"
+    ]
+   },
+   {
+    "node": "dispatcher",
+    "dir": "fail",
+    "text": "The exception reaches Spring Boot's default error handling, which picks the error view with status 500.",
+    "when": {
+     "request": "addPet",
+     "owner": "missing"
+    },
+    "events": [
+     "BasicErrorController /error status=500"
+    ]
+   },
+   {
+    "node": "views",
+    "dir": "fail",
+    "text": "error.html renders the error page.",
+    "when": {
+     "request": "addPet",
+     "owner": "missing"
+    },
+    "events": [
+     "Thymeleaf: error"
+    ],
+    "ms": 2
+   },
+   {
+    "node": "browser",
+    "dir": "fail",
+    "text": "The user sees the error page.",
+    "when": {
+     "request": "addPet",
+     "owner": "missing"
+    },
+    "events": [
+     "500 Internal Server Error"
+    ],
+    "show": "HTTP/1.1 500 Internal Server Error\nContent-Type: text/html\n\nSomething happened...\nAn internal server error occurred."
+   },
+   {
+    "node": "petCtl",
+    "dir": "down",
+    "text": "populatePetTypes() loads the types for the dropdown.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists"
+    },
+    "events": [
+     "@ModelAttribute populatePetTypes()"
+    ]
+   },
+   {
+    "node": "petTypeRepo",
+    "dir": "down",
+    "text": "findPetTypes(): all types, ordered by name.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists"
+    },
+    "events": [
+     "PetTypeRepository.findPetTypes()"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "when": {
+     "request": "addPet",
+     "owner": "exists"
+    },
+    "events": [
+     "SELECT ptype FROM PetType ORDER BY name"
+    ],
+    "ms": 1,
+    "quiet": true
+   },
+   {
+    "node": "binder",
+    "dir": "down",
+    "text": "Spring copies the form onto a new Pet. PetTypeFormatter turns \"cat\" into the cat PetType. id fields are disallowed, so a form cannot set them.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists"
+    },
+    "events": [
+     "WebDataBinder.bind(name, birthDate, type)",
+     "PetTypeFormatter.parse(\"cat\")"
+    ]
+   },
+   {
+    "node": "binder",
+    "dir": "down",
+    "text": "PetValidator checks the pet: the name is there, the type is there, the birth date is there.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": [
+      "valid",
+      "duplicate"
+     ]
+    },
+    "events": [
+     "PetValidator.validate(): ok"
+    ]
+   },
+   {
+    "node": "binder",
+    "dir": "fail",
+    "text": "PetValidator rejects the empty birth date as required.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "invalid"
+    },
+    "events": [
+     "PetValidator.validate()",
+     "errors.rejectValue(\"birthDate\", \"required\")"
+    ]
+   },
+   {
+    "node": "petCtl",
+    "dir": "down",
+    "text": "processCreationForm checks that this owner has no other pet called Rex and that the birth date is not in the future. All good.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "owner.getPet(\"Rex\", true) = null",
+     "birthDate not after today"
+    ]
+   },
+   {
+    "node": "petCtl",
+    "dir": "fail",
+    "text": "owner.getPet(\"Leo\", true) finds the existing cat, so the name is rejected as a duplicate.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "duplicate"
+    },
+    "events": [
+     "owner.getPet(\"Leo\", true) = Pet{id=1}",
+     "result.rejectValue(\"name\", \"duplicate\")"
+    ]
+   },
+   {
+    "node": "petCtl",
+    "dir": "fail",
+    "text": "result.hasErrors() is true, so it returns the form without saving.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": [
+      "invalid",
+      "duplicate"
+     ]
+    },
+    "events": [
+     "view: pets/createOrUpdatePetForm"
+    ]
+   },
+   {
+    "node": "views",
+    "dir": "fail",
+    "text": "The pet form renders again with the error next to the field.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": [
+      "invalid",
+      "duplicate"
+     ]
+    },
+    "events": [
+     "Thymeleaf: pets/createOrUpdatePetForm"
+    ],
+    "ms": 3
+   },
+   {
+    "node": "browser",
+    "dir": "fail",
+    "text": "The user sees the form with \"is required\" under the birth date.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "invalid"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nNew Pet\n  Name: [Rex]\n  Birth Date: [   ]  is required\n  Type: [cat]"
+   },
+   {
+    "node": "browser",
+    "dir": "fail",
+    "text": "The user sees the form with \"is already in use\" under the name.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "duplicate"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nNew Pet\n  Name: [Leo]  is already in use\n  Birth Date: [2025-03-14]\n  Type: [cat]"
+   },
+   {
+    "node": "petCtl",
+    "dir": "down",
+    "text": "owner.addPet(pet), then saveAndFlush(owner) so the insert happens now and a constraint error can be caught here.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "owner.addPet(Rex)",
+     "OwnerRepository.saveAndFlush(owner)"
+    ]
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "down",
+    "text": "Saving the owner cascades to its new pet.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "cascade ALL -> persist Pet"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "The new pet row is inserted. The unique (owner_id, name) constraint would catch a duplicate that slipped past the controller.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "INSERT INTO pets"
+    ],
+    "ms": 3,
+    "show": "insert into pets (name, birth_date, type_id, owner_id)\nvalues ('Rex', '2025-03-14', 1, {ownerId})"
+   },
+   {
+    "node": "petCtl",
+    "dir": "up",
+    "text": "A flash message \"New Pet has been Added\" is stored and the browser is redirected to the owner's page.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "flash: New Pet has been Added",
+     "return \"redirect:/owners/{ownerId}\""
+    ]
+   },
+   {
+    "node": "browser",
+    "dir": "down",
+    "text": "The browser follows the redirect: GET /owners/1.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "302 Found -> /owners/1"
+    ],
+    "ms": 1,
+    "show": "GET /owners/1 HTTP/1.1"
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "Routed to OwnerController.showOwner.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "DispatcherServlet -> OwnerController.showOwner(1)"
+    ]
+   },
+   {
+    "node": "ownerCtl",
+    "dir": "down",
+    "text": "showOwner(1) loads the owner for the details page.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    }
+   },
+   {
+    "node": "ownerRepo",
+    "dir": "down",
+    "text": "findById(1)",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "OwnerRepository.findById(1)"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "The owner and, eagerly, their pets and visits are loaded.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "SELECT owner 1 with pets and visits"
+    ],
+    "ms": 2,
+    "show": "select o.*, p.*, v.*\n  from owners o\n  left join pets p on p.owner_id = o.id\n  left join visits v on v.pet_id = p.id\n where o.id = 1"
+   },
+   {
+    "node": "views",
+    "dir": "up",
+    "text": "ownerDetails.html renders the owner, their pets and visits.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "Thymeleaf: owners/ownerDetails"
+    ],
+    "ms": 4
+   },
+   {
+    "node": "browser",
+    "dir": "up",
+    "text": "The owner's page shows Rex in the pet list, with the green \"New Pet has been Added\" message.",
+    "when": {
+     "request": "addPet",
+     "owner": "exists",
+     "form": "valid"
+    },
+    "events": [
+     "200 OK text/html"
+    ],
+    "show": "HTTP/1.1 200 OK\nContent-Type: text/html\n\nNew Pet has been Added\nOwner Information: George Franklin\nPets and Visits: Leo (cat), Rex (cat)"
+   },
+   {
+    "node": "vetCtl",
+    "dir": "down",
+    "text": "showResourcesVetList() asks the repository for all vets. Because of @ResponseBody, the result becomes JSON, not a template.",
+    "when": {
+     "request": "vets"
+    },
+    "events": [
+     "VetController.showResourcesVetList()"
+    ]
+   },
+   {
+    "node": "vetRepo",
+    "dir": "down",
+    "text": "findAll() is annotated @Cacheable(\"vets\"), so Spring checks the cache before running the query.",
+    "when": {
+     "request": "vets"
+    },
+    "events": [
+     "VetRepository.findAll() [@Cacheable vets]"
+    ]
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "text": "First request since startup: the vets cache is empty, so the query runs.",
+    "when": {
+     "request": "vets",
+     "cache": "cold"
+    },
+    "events": [
+     "cache 'vets': miss"
+    ]
+   },
+   {
+    "node": "cache",
+    "dir": "up",
+    "text": "The vets cache already holds the list. It is returned immediately; the database is not touched.",
+    "when": {
+     "request": "vets",
+     "cache": "warm"
+    },
+    "events": [
+     "cache 'vets': hit"
+    ]
+   },
+   {
+    "node": "db",
+    "dir": "down",
+    "text": "Load the vets and their specialties.",
+    "when": {
+     "request": "vets",
+     "cache": "cold"
+    },
+    "events": [
+     "SELECT vets",
+     "SELECT vet_specialties"
+    ],
+    "ms": 3,
+    "show": "select v.* from vets v;\nselect s.* from vet_specialties vs\n  join specialties s on s.id = vs.specialty_id\n where vs.vet_id in (1, 2, 3, 4, 5, 6)"
+   },
+   {
+    "node": "cache",
+    "dir": "up",
+    "text": "The result is stored in the vets cache for the next request.",
+    "when": {
+     "request": "vets",
+     "cache": "cold"
+    },
+    "events": [
+     "cache 'vets': put 6 vets"
+    ]
+   },
+   {
+    "node": "vetCtl",
+    "dir": "up",
+    "text": "The Vets object is written as JSON by Spring's message converter.",
+    "when": {
+     "request": "vets"
+    },
+    "events": [
+     "HttpMessageConverter: Vets -> application/json"
+    ],
+    "ms": 1,
+    "show": "{\"vetList\": [\n  {\"id\": 1, \"firstName\": \"James\", \"lastName\": \"Carter\", \"specialties\": []},\n  {\"id\": 2, \"firstName\": \"Helen\", \"lastName\": \"Leary\", \"specialties\": [{\"name\": \"radiology\"}]},\n  ...\n]}"
+   },
+   {
+    "node": "browser",
+    "dir": "up",
+    "text": "The script gets the vet list as JSON.",
+    "when": {
+     "request": "vets"
+    },
+    "events": [
+     "200 OK application/json"
+    ]
+   }
+  ]
+ }
+}

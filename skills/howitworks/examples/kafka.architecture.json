@@ -1,0 +1,1624 @@
+{
+ "name": "Apache Kafka",
+ "summary": "Kafka is a distributed log. Producers append records to topics, which are split into partitions; each partition is an ordered, append-only log stored on disk by a leader broker and copied to follower brokers. Consumers read the log at their own pace and remember their position as an offset. A small group of controllers (KRaft) keeps the cluster's metadata: which topics exist and which broker leads each partition.",
+ "groups": [
+  {
+   "id": "apps",
+   "label": "Your apps",
+   "description": "Code that uses the Kafka client libraries."
+  },
+  {
+   "id": "client",
+   "label": "Client library",
+   "description": "Runs inside your app. Batches records, finds the right broker, and talks the Kafka protocol."
+  },
+  {
+   "id": "net",
+   "label": "Broker: request handling",
+   "description": "Every request to a broker passes through these steps, in order."
+  },
+  {
+   "id": "repl",
+   "label": "Broker: partitions and replication",
+   "description": "Which partitions this broker leads, who is in sync, and requests waiting for replication."
+  },
+  {
+   "id": "store",
+   "label": "Broker: storage",
+   "description": "How a partition's log is kept on disk."
+  },
+  {
+   "id": "meta",
+   "label": "Cluster metadata (KRaft)",
+   "description": "The controllers' replicated log of cluster state, and how brokers apply it."
+  },
+  {
+   "id": "addons",
+   "label": "Built on the clients",
+   "description": "Larger frameworks in this repo that use the producer and consumer."
+  }
+ ],
+ "nodes": [
+  {
+   "id": "producerApp",
+   "group": "apps",
+   "kind": "external",
+   "label": "Producer app",
+   "description": "Your service writing events, for example an order service calling producer.send()."
+  },
+  {
+   "id": "consumerApp",
+   "group": "apps",
+   "kind": "external",
+   "label": "Consumer app",
+   "description": "Your service reading events in a loop with consumer.poll()."
+  },
+  {
+   "id": "clientMeta",
+   "group": "client",
+   "kind": "store",
+   "label": "Metadata",
+   "description": "The client's cached map of the cluster: topics, partitions, and which broker leads each one. Refreshed on a timer and whenever a broker says the cache is wrong.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/Metadata.java",
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/ProducerMetadata.java"
+   ]
+  },
+  {
+   "id": "producer",
+   "group": "client",
+   "kind": "core",
+   "label": "KafkaProducer",
+   "description": "send() runs interceptors, waits for metadata, serializes the key and value, picks a partition and adds the record to a batch. It returns a Future immediately; a background thread does the network work.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/producer/KafkaProducer.java",
+    "clients/src/main/java/org/apache/kafka/clients/producer/ProducerConfig.java"
+   ]
+  },
+  {
+   "id": "partitioner",
+   "group": "client",
+   "kind": "core",
+   "label": "Partitioner",
+   "description": "Records with a key go to murmur2(key) mod partition count, so the same key always lands in the same partition. Records without a key stick to one partition until a batch fills (adaptive sticky partitioning).",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/BuiltInPartitioner.java"
+   ]
+  },
+  {
+   "id": "accumulator",
+   "group": "client",
+   "kind": "store",
+   "label": "Record accumulator",
+   "description": "In-memory batches, one queue per partition. A batch is sent when it reaches batch.size (16 KB by default) or has waited linger.ms (5 ms by default).",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/RecordAccumulator.java",
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/ProducerBatch.java"
+   ]
+  },
+  {
+   "id": "sender",
+   "group": "client",
+   "kind": "core",
+   "label": "Sender thread",
+   "description": "The producer's background thread. Drains ready batches, groups them per broker into ProduceRequests, handles responses, and retries or refreshes metadata on errors. With idempotence on (the default) it stamps each batch with a producer ID and sequence number.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/Sender.java",
+    "clients/src/main/java/org/apache/kafka/clients/producer/internals/TransactionManager.java"
+   ]
+  },
+  {
+   "id": "netclient",
+   "group": "client",
+   "kind": "core",
+   "label": "Network client",
+   "description": "Keeps one connection per broker, sends requests and matches responses, using non-blocking sockets (Selector). Shared by the producer, consumer and admin client.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/NetworkClient.java",
+    "clients/src/main/java/org/apache/kafka/common/network/Selector.java"
+   ]
+  },
+  {
+   "id": "consumer",
+   "group": "client",
+   "kind": "core",
+   "label": "KafkaConsumer",
+   "description": "poll() returns records from the partitions assigned to this consumer. It fetches ahead in the background, joins a consumer group to split partitions with other instances, and commits offsets. The classic implementation is the default; group.protocol=consumer selects the newer one.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/consumer/KafkaConsumer.java",
+    "clients/src/main/java/org/apache/kafka/clients/consumer/internals/ClassicKafkaConsumer.java",
+    "clients/src/main/java/org/apache/kafka/clients/consumer/internals/AsyncKafkaConsumer.java",
+    "clients/src/main/java/org/apache/kafka/clients/consumer/internals/FetchRequestManager.java"
+   ]
+  },
+  {
+   "id": "socket",
+   "group": "net",
+   "kind": "step",
+   "label": "Socket server",
+   "description": "Acceptor threads take new connections; network threads (3 by default) read requests off sockets and later write responses back. They never touch the log.",
+   "files": [
+    "core/src/main/scala/kafka/network/SocketServer.scala"
+   ]
+  },
+  {
+   "id": "reqchan",
+   "group": "net",
+   "kind": "store",
+   "label": "Request queue",
+   "description": "The hand-off between network threads and I/O threads. Requests wait here until an I/O thread is free; responses go back through it.",
+   "files": [
+    "core/src/main/scala/kafka/network/RequestChannel.scala"
+   ]
+  },
+  {
+   "id": "handlers",
+   "group": "net",
+   "kind": "step",
+   "label": "Request handler threads",
+   "description": "A pool of I/O threads (8 by default) that take requests from the queue and run them.",
+   "files": [
+    "core/src/main/scala/kafka/server/KafkaRequestHandler.scala"
+   ]
+  },
+  {
+   "id": "apis",
+   "group": "net",
+   "kind": "step",
+   "label": "KafkaApis",
+   "description": "One handler per request type: Produce, Fetch, OffsetCommit, and dozens more. Checks ACLs and quotas, then calls the right component. Admin requests like CreateTopics are forwarded to the controller.",
+   "files": [
+    "core/src/main/scala/kafka/server/KafkaApis.scala",
+    "server/src/main/java/org/apache/kafka/server/ForwardingManager.java"
+   ]
+  },
+  {
+   "id": "purgatory",
+   "group": "repl",
+   "kind": "store",
+   "label": "Produce purgatory",
+   "description": "Where acks=all produce requests wait until enough replicas have the data, or until request.timeout.ms. Each is retried whenever the partition's high watermark moves.",
+   "files": [
+    "server/src/main/java/org/apache/kafka/server/purgatory/DelayedProduce.java",
+    "server-common/src/main/java/org/apache/kafka/server/purgatory/DelayedOperationPurgatory.java"
+   ]
+  },
+  {
+   "id": "partition",
+   "group": "repl",
+   "kind": "core",
+   "label": "Partition",
+   "description": "One partition replica on this broker. As leader it tracks the in-sync replicas (ISR) and the high watermark: the offset every in-sync replica has, which is the most consumers may read.",
+   "files": [
+    "core/src/main/scala/kafka/cluster/Partition.scala"
+   ]
+  },
+  {
+   "id": "replicaMgr",
+   "group": "repl",
+   "kind": "core",
+   "label": "Replica manager",
+   "description": "Owns every partition on this broker. Routes appends and fetches to the right Partition, and switches partitions between leader and follower when metadata changes.",
+   "files": [
+    "core/src/main/scala/kafka/server/ReplicaManager.scala"
+   ]
+  },
+  {
+   "id": "groupCoord",
+   "group": "repl",
+   "kind": "core",
+   "label": "Group coordinator",
+   "description": "Runs consumer groups: who is in the group, which partitions each member owns, and committed offsets. Its state is stored in the internal __consumer_offsets topic.",
+   "files": [
+    "group-coordinator/src/main/java/org/apache/kafka/coordinator/group/GroupCoordinatorService.java",
+    "group-coordinator/src/main/java/org/apache/kafka/coordinator/group/GroupMetadataManager.java",
+    "coordinator-common/src/main/java/org/apache/kafka/coordinator/common/runtime/CoordinatorRuntime.java"
+   ]
+  },
+  {
+   "id": "followers",
+   "group": "repl",
+   "kind": "core",
+   "label": "Follower replicas",
+   "description": "The same broker code on other machines. A replica fetcher thread on each follower keeps sending Fetch requests to the leader and appends what it gets to its own copy of the log.",
+   "files": [
+    "core/src/main/scala/kafka/server/ReplicaFetcherThread.scala",
+    "core/src/main/scala/kafka/server/AbstractFetcherThread.scala"
+   ]
+  },
+  {
+   "id": "producerState",
+   "group": "store",
+   "kind": "store",
+   "label": "Producer state",
+   "description": "Per producer ID, the last sequence numbers written. Lets the log reject out-of-order batches and drop duplicates when a producer retries, which is what makes idempotent produce work.",
+   "files": [
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/ProducerStateManager.java",
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/ProducerAppendInfo.java"
+   ]
+  },
+  {
+   "id": "log",
+   "group": "store",
+   "kind": "core",
+   "label": "Partition log",
+   "description": "The partition's log: assigns offsets, validates batches, rolls to a new segment when the active one is full, and applies retention. Shared by leader and follower code.",
+   "files": [
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/UnifiedLog.java",
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/LogManager.java"
+   ]
+  },
+  {
+   "id": "segment",
+   "group": "store",
+   "kind": "core",
+   "label": "Log segment",
+   "description": "One file of records (by default up to 1 GB) plus a sparse offset index and time index to find records quickly.",
+   "files": [
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/LogSegment.java",
+    "clients/src/main/java/org/apache/kafka/common/record/internal/FileRecords.java",
+    "storage/src/main/java/org/apache/kafka/storage/internals/log/OffsetIndex.java"
+   ]
+  },
+  {
+   "id": "disk",
+   "group": "store",
+   "kind": "external",
+   "label": "Page cache and disk",
+   "description": "Kafka writes to the OS page cache and, by default, leaves flushing to the OS; durability comes from replication. Plain-text fetches are sent straight from the page cache to the socket (zero-copy)."
+  },
+  {
+   "id": "controller",
+   "group": "meta",
+   "kind": "core",
+   "label": "Quorum controller",
+   "description": "The active controller decides cluster changes: creating topics, choosing partition leaders, updating the ISR, registering brokers. Every decision is a record in the metadata log.",
+   "files": [
+    "metadata/src/main/java/org/apache/kafka/controller/QuorumController.java",
+    "metadata/src/main/java/org/apache/kafka/controller/ReplicationControlManager.java"
+   ]
+  },
+  {
+   "id": "raft",
+   "group": "meta",
+   "kind": "store",
+   "label": "Metadata log (Raft)",
+   "description": "The __cluster_metadata log, replicated across controllers with Kafka's own Raft implementation. Brokers follow it to learn every change.",
+   "files": [
+    "raft/src/main/java/org/apache/kafka/raft/KafkaRaftClient.java"
+   ]
+  },
+  {
+   "id": "metaPublisher",
+   "group": "meta",
+   "kind": "core",
+   "label": "Broker metadata publisher",
+   "description": "On each broker, replays new metadata records into an in-memory image, updates the metadata cache, and tells the replica manager which partitions to lead or follow.",
+   "files": [
+    "metadata/src/main/java/org/apache/kafka/image/loader/MetadataLoader.java",
+    "core/src/main/scala/kafka/server/metadata/BrokerMetadataPublisher.scala",
+    "metadata/src/main/java/org/apache/kafka/metadata/KRaftMetadataCache.java"
+   ]
+  },
+  {
+   "id": "streams",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Kafka Streams",
+   "description": "A library for stream processing (joins, aggregations, windows) built on the producer and consumer, with local state stores.",
+   "files": [
+    "streams/src/main/java/org/apache/kafka/streams/KafkaStreams.java"
+   ]
+  },
+  {
+   "id": "connect",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Kafka Connect",
+   "description": "A runtime for connectors that copy data between Kafka and other systems, such as databases and object stores.",
+   "files": [
+    "connect/runtime/src/main/java/org/apache/kafka/connect/runtime/Worker.java"
+   ]
+  },
+  {
+   "id": "admin",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Admin client",
+   "description": "Manages topics, configs, ACLs and consumer groups. Used by the command-line tools.",
+   "files": [
+    "clients/src/main/java/org/apache/kafka/clients/admin/Admin.java",
+    "clients/src/main/java/org/apache/kafka/clients/admin/KafkaAdminClient.java"
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "producerApp",
+   "to": "producer",
+   "label": "send(record)"
+  },
+  {
+   "from": "consumerApp",
+   "to": "consumer",
+   "label": "poll()"
+  },
+  {
+   "from": "producer",
+   "to": "clientMeta",
+   "label": "where is the topic?"
+  },
+  {
+   "from": "producer",
+   "to": "partitioner",
+   "label": "pick partition"
+  },
+  {
+   "from": "producer",
+   "to": "accumulator",
+   "label": "add to batch"
+  },
+  {
+   "from": "sender",
+   "to": "accumulator",
+   "label": "drain full batches"
+  },
+  {
+   "from": "sender",
+   "to": "netclient",
+   "label": "ProduceRequest"
+  },
+  {
+   "from": "sender",
+   "to": "clientMeta",
+   "label": "refresh on error"
+  },
+  {
+   "from": "consumer",
+   "to": "netclient",
+   "label": "FetchRequest"
+  },
+  {
+   "from": "netclient",
+   "to": "socket",
+   "label": "TCP"
+  },
+  {
+   "from": "socket",
+   "to": "reqchan",
+   "label": "queue request"
+  },
+  {
+   "from": "handlers",
+   "to": "reqchan",
+   "label": "take request"
+  },
+  {
+   "from": "handlers",
+   "to": "apis",
+   "label": "handle()"
+  },
+  {
+   "from": "apis",
+   "to": "replicaMgr",
+   "label": "append / fetch"
+  },
+  {
+   "from": "apis",
+   "to": "groupCoord",
+   "label": "joins, commits"
+  },
+  {
+   "from": "apis",
+   "to": "controller",
+   "label": "forwards admin requests"
+  },
+  {
+   "from": "replicaMgr",
+   "to": "partition",
+   "label": "append to leader"
+  },
+  {
+   "from": "replicaMgr",
+   "to": "purgatory",
+   "label": "wait for replicas"
+  },
+  {
+   "from": "partition",
+   "to": "purgatory",
+   "label": "high watermark moved"
+  },
+  {
+   "from": "partition",
+   "to": "log",
+   "label": "appendAsLeader"
+  },
+  {
+   "from": "groupCoord",
+   "to": "replicaMgr",
+   "label": "writes __consumer_offsets"
+  },
+  {
+   "from": "followers",
+   "to": "apis",
+   "label": "Fetch from leader"
+  },
+  {
+   "from": "log",
+   "to": "producerState",
+   "label": "check sequence"
+  },
+  {
+   "from": "log",
+   "to": "segment",
+   "label": "append batch"
+  },
+  {
+   "from": "segment",
+   "to": "disk",
+   "label": "write"
+  },
+  {
+   "from": "controller",
+   "to": "raft",
+   "label": "append records"
+  },
+  {
+   "from": "metaPublisher",
+   "to": "raft",
+   "label": "follow log"
+  },
+  {
+   "from": "metaPublisher",
+   "to": "replicaMgr",
+   "label": "lead / follow"
+  },
+  {
+   "from": "metaPublisher",
+   "to": "clientMeta",
+   "label": "answers Metadata requests"
+  },
+  {
+   "from": "streams",
+   "to": "producer"
+  },
+  {
+   "from": "streams",
+   "to": "consumer"
+  },
+  {
+   "from": "connect",
+   "to": "producer"
+  },
+  {
+   "from": "admin",
+   "to": "netclient"
+  }
+ ],
+ "flows": [
+  {
+   "id": "produce",
+   "title": "Produce a record",
+   "steps": [
+    {
+     "node": "producerApp",
+     "text": "Your app calls producer.send(record) and gets a Future back right away."
+    },
+    {
+     "node": "producer",
+     "text": "The record is serialized and checked against the cached metadata."
+    },
+    {
+     "node": "partitioner",
+     "text": "Its key decides the partition."
+    },
+    {
+     "node": "accumulator",
+     "text": "It joins a batch for that partition."
+    },
+    {
+     "node": "sender",
+     "text": "The background thread sends the batch when it is full or linger.ms has passed."
+    },
+    {
+     "node": "netclient",
+     "text": "A ProduceRequest goes to the partition's leader broker."
+    },
+    {
+     "node": "socket",
+     "text": "A network thread reads the request off the socket."
+    },
+    {
+     "node": "reqchan",
+     "text": "It waits in the request queue."
+    },
+    {
+     "node": "handlers",
+     "text": "An I/O thread picks it up."
+    },
+    {
+     "node": "apis",
+     "text": "KafkaApis checks ACLs and hands the records to the replica manager."
+    },
+    {
+     "node": "replicaMgr",
+     "text": "The replica manager finds the partition."
+    },
+    {
+     "node": "partition",
+     "text": "The leader appends to its log."
+    },
+    {
+     "node": "log",
+     "text": "The log assigns the next offsets."
+    },
+    {
+     "node": "segment",
+     "text": "The batch is written to the active segment file."
+    }
+   ]
+  },
+  {
+   "id": "replicate",
+   "title": "Replicate and acknowledge",
+   "steps": [
+    {
+     "node": "followers",
+     "text": "Each follower has a Fetch request open to the leader."
+    },
+    {
+     "node": "apis",
+     "text": "The leader answers with the new records."
+    },
+    {
+     "node": "followers",
+     "text": "The follower appends them to its own log, then fetches again from the next offset."
+    },
+    {
+     "node": "partition",
+     "text": "That next fetch tells the leader how far the follower got. When every in-sync replica has an offset, the high watermark moves past it."
+    },
+    {
+     "node": "purgatory",
+     "text": "Waiting acks=all requests whose records are now below the high watermark are completed."
+    },
+    {
+     "node": "socket",
+     "text": "Their responses go back to the producers."
+    }
+   ]
+  },
+  {
+   "id": "consume",
+   "title": "Consume and commit",
+   "steps": [
+    {
+     "node": "consumerApp",
+     "text": "Your app calls consumer.poll()."
+    },
+    {
+     "node": "consumer",
+     "text": "The consumer knows its assigned partitions from its group, and where it left off."
+    },
+    {
+     "node": "netclient",
+     "text": "A FetchRequest asks the leader for records after that offset."
+    },
+    {
+     "node": "apis",
+     "text": "KafkaApis passes the fetch to the replica manager."
+    },
+    {
+     "node": "replicaMgr",
+     "text": "Records up to the high watermark are read."
+    },
+    {
+     "node": "disk",
+     "text": "Usually straight from the page cache, without a disk read."
+    },
+    {
+     "node": "consumerApp",
+     "text": "poll() returns the records. Your app processes them."
+    },
+    {
+     "node": "groupCoord",
+     "text": "The consumer commits its new offset to the group coordinator."
+    },
+    {
+     "node": "replicaMgr",
+     "text": "The commit is stored as a record in __consumer_offsets, replicated like any other topic."
+    }
+   ]
+  },
+  {
+   "id": "createTopic",
+   "title": "Create a topic",
+   "steps": [
+    {
+     "node": "admin",
+     "text": "kafka-topics.sh or the Admin client sends CreateTopics to any broker."
+    },
+    {
+     "node": "apis",
+     "text": "The broker forwards it to the active controller."
+    },
+    {
+     "node": "controller",
+     "text": "The controller picks a leader and replicas for each partition."
+    },
+    {
+     "node": "raft",
+     "text": "Those decisions are appended to the metadata log and replicated to the other controllers."
+    },
+    {
+     "node": "metaPublisher",
+     "text": "Every broker replays the new records."
+    },
+    {
+     "node": "replicaMgr",
+     "text": "Brokers chosen as leaders or followers create the partitions."
+    },
+    {
+     "node": "log",
+     "text": "Each creates an empty log directory for its partition."
+    }
+   ]
+  }
+ ],
+ "changes": [
+  {
+   "task": "Tune producer batching or throughput",
+   "nodes": [
+    "accumulator",
+    "sender"
+   ]
+  },
+  {
+   "task": "Change how records are assigned to partitions",
+   "nodes": [
+    "partitioner"
+   ]
+  },
+  {
+   "task": "Debug a slow or timed-out acks=all produce",
+   "nodes": [
+    "purgatory",
+    "partition",
+    "followers"
+   ]
+  },
+  {
+   "task": "Add or change a protocol request",
+   "nodes": [
+    "apis",
+    "netclient"
+   ]
+  },
+  {
+   "task": "Change how data is written, indexed or retained on disk",
+   "nodes": [
+    "log",
+    "segment"
+   ]
+  },
+  {
+   "task": "Work on consumer group rebalancing or offsets",
+   "nodes": [
+    "groupCoord",
+    "consumer"
+   ]
+  },
+  {
+   "task": "Change leader election or topic creation",
+   "nodes": [
+    "controller"
+   ]
+  },
+  {
+   "task": "Tune broker threads and request queueing",
+   "nodes": [
+    "socket",
+    "reqchan",
+    "handlers"
+   ]
+  }
+ ],
+ "scenario": {
+  "title": "Produce a record",
+  "eventsLabel": "Code path (simulated timing)",
+  "input": {
+   "label": "Record",
+   "value": "orders  key=customer-42",
+   "pattern": "^\\s*(?<topic>[\\w.-]+)\\s+key=(?<key>\\S+)"
+  },
+  "options": [
+   {
+    "id": "acks",
+    "label": "acks",
+    "choices": [
+     {
+      "value": "all",
+      "label": "all (default)"
+     },
+     {
+      "value": "1",
+      "label": "1"
+     },
+     {
+      "value": "0",
+      "label": "0"
+     }
+    ]
+   },
+   {
+    "id": "batch",
+    "label": "Batch",
+    "choices": [
+     {
+      "value": "linger",
+      "label": "Waits linger.ms"
+     },
+     {
+      "value": "full",
+      "label": "Already full"
+     }
+    ]
+   },
+   {
+    "id": "meta",
+    "label": "Topic metadata",
+    "choices": [
+     {
+      "value": "cached",
+      "label": "Cached"
+     },
+     {
+      "value": "unknown",
+      "label": "First send to topic"
+     }
+    ]
+   },
+   {
+    "id": "leader",
+    "label": "Leader",
+    "enabledWhen": {
+     "acks": [
+      "1",
+      "all"
+     ]
+    },
+    "choices": [
+     {
+      "value": "ok",
+      "label": "Stable"
+     },
+     {
+      "value": "moved",
+      "label": "Moved to another broker"
+     }
+    ]
+   },
+   {
+    "id": "isr",
+    "label": "In-sync replicas",
+    "enabledWhen": {
+     "acks": "all"
+    },
+    "choices": [
+     {
+      "value": "ok",
+      "label": "3 of 3"
+     },
+     {
+      "value": "low",
+      "label": "1 of 3 (below min.insync)"
+     }
+    ]
+   },
+   {
+    "id": "net",
+    "label": "Response",
+    "enabledWhen": {
+     "acks": [
+      "1",
+      "all"
+     ],
+     "isrOk": "yes"
+    },
+    "choices": [
+     {
+      "value": "ok",
+      "label": "Arrives"
+     },
+     {
+      "value": "lost",
+      "label": "Lost, producer retries"
+     }
+    ]
+   }
+  ],
+  "derive": [
+   {
+    "id": "isrOk",
+    "value": "no",
+    "when": {
+     "acks": "all",
+     "isr": "low"
+    }
+   },
+   {
+    "id": "isrOk",
+    "value": "yes"
+   },
+   {
+    "id": "leaderOk",
+    "value": "no",
+    "when": {
+     "leader": "moved"
+    }
+   },
+   {
+    "id": "leaderOk",
+    "value": "yes"
+   }
+  ],
+  "steps": [
+   {
+    "node": "producerApp",
+    "dir": "down",
+    "text": "Your app calls producer.send(record, callback). send() returns a Future at once; your thread does not wait for the broker.",
+    "show": "ProducerRecord\n  topic: {topic}\n  key:   \"{key}\"\n  value: {\"orderId\": 1017, \"total\": 42.50}"
+   },
+   {
+    "node": "producer",
+    "dir": "down",
+    "text": "KafkaProducer runs any ProducerInterceptors, then needs to know how many partitions {topic} has.",
+    "events": [
+     "KafkaProducer.send()",
+     "ProducerInterceptors.onSend()"
+    ]
+   },
+   {
+    "node": "clientMeta",
+    "dir": "down",
+    "text": "The topic is in the metadata cache: 6 partitions, leaders known.",
+    "when": {
+     "meta": "cached"
+    },
+    "events": [
+     "waitOnMetadata({topic}): cached, 6 partitions"
+    ]
+   },
+   {
+    "node": "clientMeta",
+    "dir": "down",
+    "text": "{topic} is not in the cache yet. send() blocks (up to max.block.ms) while the Sender fetches metadata from any broker.",
+    "when": {
+     "meta": "unknown"
+    },
+    "events": [
+     "waitOnMetadata({topic}): not cached, requesting update"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "sender",
+    "dir": "down",
+    "text": "The Sender thread sends a MetadataRequest.",
+    "when": {
+     "meta": "unknown"
+    },
+    "events": [
+     "MetadataRequest -> broker 2"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "metaPublisher",
+    "dir": "up",
+    "text": "The broker answers from its metadata cache, which it keeps current by following the controllers' metadata log.",
+    "when": {
+     "meta": "unknown"
+    },
+    "events": [
+     "MetadataResponse: {topic} has 6 partitions, leader of {topic}-3 is broker 1"
+    ],
+    "ms": 2
+   },
+   {
+    "node": "clientMeta",
+    "dir": "up",
+    "text": "The cache now knows {topic}. send() continues.",
+    "when": {
+     "meta": "unknown"
+    }
+   },
+   {
+    "node": "producer",
+    "dir": "down",
+    "text": "The key and value are serialized to bytes.",
+    "events": [
+     "StringSerializer.serialize(key)",
+     "JsonSerializer.serialize(value)"
+    ]
+   },
+   {
+    "node": "partitioner",
+    "dir": "down",
+    "text": "The record has a key, so the partition is murmur2(key) mod 6 = 3. Every record for {key} lands in partition 3, which keeps them in order.",
+    "events": [
+     "BuiltInPartitioner.partitionForKey(\"{key}\", 6) = 3"
+    ]
+   },
+   {
+    "node": "accumulator",
+    "dir": "down",
+    "text": "The record joins the open batch for {topic}-3. With idempotence on (the default), the batch belongs to producer ID 4001 and will carry sequence numbers.",
+    "events": [
+     "RecordAccumulator.append({topic}-3): batch has 14 records, 1.6 KB"
+    ],
+    "show": "RecordBatch for {topic}-3\n  producerId: 4001  epoch: 0\n  baseSequence: 87\n  records: 14 (yours is #14)\n  compression: none  size: 1.6 KB"
+   },
+   {
+    "node": "accumulator",
+    "dir": "down",
+    "text": "The batch is not full (batch.size is 16 KB), so it waits up to linger.ms = 5 ms for more records.",
+    "when": {
+     "batch": "linger"
+    },
+    "events": [
+     "linger.ms elapsed: batch ready"
+    ],
+    "ms": 5
+   },
+   {
+    "node": "accumulator",
+    "dir": "down",
+    "text": "Records are arriving fast; the batch reached 16 KB and is ready immediately.",
+    "when": {
+     "batch": "full"
+    },
+    "events": [
+     "batch.size reached: batch ready"
+    ]
+   },
+   {
+    "node": "sender",
+    "dir": "down",
+    "text": "The Sender thread drains ready batches and groups them by leader broker. {topic}-3 is led by broker 1.",
+    "events": [
+     "Sender.sendProducerData(): drain 1 batch for broker 1"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "netclient",
+    "dir": "down",
+    "text": "One ProduceRequest goes to broker 1 over its existing connection.",
+    "events": [
+     "NetworkClient.send(ProduceRequest acks={acks}) -> broker 1"
+    ],
+    "ms": 1,
+    "show": "ProduceRequest\n  acks: {acks}\n  timeout: 30000 ms\n  {topic}-3: 1 batch (producerId 4001, seq 87..100)"
+   },
+   {
+    "node": "producerApp",
+    "dir": "up",
+    "text": "With acks=0 the producer does not wait for any answer. Your callback runs as soon as the request is on the wire, with no offset. If the broker failed, you would never know.",
+    "when": {
+     "acks": "0"
+    },
+    "events": [
+     "callback.onCompletion(RecordMetadata(offset = -1), null)"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "down",
+    "text": "A network thread on broker 1 reads the request off the socket.",
+    "when": {
+     "leaderOk": "yes"
+    },
+    "events": [
+     "Processor: received ProduceRequest"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "reqchan",
+    "dir": "down",
+    "text": "The request waits in the request queue for a free I/O thread.",
+    "when": {
+     "leaderOk": "yes"
+    },
+    "events": [
+     "RequestChannel.sendRequest()"
+    ]
+   },
+   {
+    "node": "handlers",
+    "dir": "down",
+    "text": "One of the 8 I/O threads picks it up.",
+    "when": {
+     "leaderOk": "yes"
+    },
+    "events": [
+     "KafkaRequestHandler: dequeued"
+    ]
+   },
+   {
+    "node": "apis",
+    "dir": "down",
+    "text": "KafkaApis.handleProduceRequest checks the WRITE ACL on {topic} and passes the records to the replica manager.",
+    "when": {
+     "leaderOk": "yes"
+    },
+    "events": [
+     "KafkaApis.handleProduceRequest()",
+     "authorize WRITE topic={topic}: allowed"
+    ]
+   },
+   {
+    "node": "replicaMgr",
+    "dir": "down",
+    "text": "The replica manager looks up partition {topic}-3 on this broker.",
+    "when": {
+     "leaderOk": "yes"
+    },
+    "events": [
+     "ReplicaManager.appendRecords()"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "down",
+    "text": "A network thread on broker 1 reads the request off the socket.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "Processor: received ProduceRequest"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "reqchan",
+    "dir": "down",
+    "text": "The request waits in the request queue for a free I/O thread.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "RequestChannel.sendRequest()"
+    ]
+   },
+   {
+    "node": "handlers",
+    "dir": "down",
+    "text": "One of the 8 I/O threads picks it up.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "KafkaRequestHandler: dequeued"
+    ]
+   },
+   {
+    "node": "apis",
+    "dir": "down",
+    "text": "KafkaApis.handleProduceRequest checks the WRITE ACL on {topic} and passes the records to the replica manager.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "KafkaApis.handleProduceRequest()",
+     "authorize WRITE topic={topic}: allowed"
+    ]
+   },
+   {
+    "node": "replicaMgr",
+    "dir": "down",
+    "text": "The replica manager looks up partition {topic}-3 on this broker.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "ReplicaManager.appendRecords()"
+    ]
+   },
+   {
+    "node": "partition",
+    "dir": "down",
+    "text": "Broker 1 is no longer the leader of {topic}-3: leadership moved to broker 2 a moment ago (for example, broker 1 is being restarted).",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "Partition {topic}-3: not leader (leader epoch 7, current leader broker 2)"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "fail",
+    "text": "The response carries NOT_LEADER_OR_FOLLOWER.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "ProduceResponse {topic}-3: NOT_LEADER_OR_FOLLOWER"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "sender",
+    "dir": "fail",
+    "text": "The error is retriable, so the Sender puts the batch back in the queue and asks for fresh metadata.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "Sender.completeBatch(): retriable error, reenqueueBatch()",
+     "metadata.requestUpdate()"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "clientMeta",
+    "dir": "down",
+    "text": "New metadata says broker 2 leads {topic}-3.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "MetadataResponse: leader of {topic}-3 is broker 2"
+    ],
+    "ms": 2
+   },
+   {
+    "node": "sender",
+    "dir": "down",
+    "text": "After retry.backoff.ms the same batch is sent again, now to broker 2, with the same producer ID and sequence numbers.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "retry 1: ProduceRequest -> broker 2"
+    ],
+    "ms": 100
+   },
+   {
+    "node": "netclient",
+    "dir": "down",
+    "text": "ProduceRequest to broker 2.",
+    "when": {
+     "leader": "moved"
+    },
+    "events": [
+     "NetworkClient.send(ProduceRequest) -> broker 2"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "socket",
+    "dir": "down",
+    "text": "Broker 2 reads the request.",
+    "when": {
+     "leader": "moved"
+    }
+   },
+   {
+    "node": "reqchan",
+    "dir": "down",
+    "when": {
+     "leader": "moved"
+    },
+    "quiet": true
+   },
+   {
+    "node": "handlers",
+    "dir": "down",
+    "when": {
+     "leader": "moved"
+    },
+    "quiet": true
+   },
+   {
+    "node": "apis",
+    "dir": "down",
+    "text": "Broker 2's KafkaApis checks ACLs.",
+    "when": {
+     "leader": "moved"
+    }
+   },
+   {
+    "node": "replicaMgr",
+    "dir": "down",
+    "text": "Broker 2 is the leader now.",
+    "when": {
+     "leader": "moved"
+    }
+   },
+   {
+    "node": "partition",
+    "dir": "fail",
+    "text": "acks=all needs at least min.insync.replicas in sync. Only the leader is in sync right now, and this topic requires 2, so the leader refuses to write.",
+    "when": {
+     "acks": "all",
+     "isr": "low"
+    },
+    "events": [
+     "Partition.appendRecordsToLeader: ISR size 1 < min.insync.replicas 2",
+     "NotEnoughReplicasException"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "fail",
+    "text": "The response carries NOT_ENOUGH_REPLICAS. Nothing was written.",
+    "when": {
+     "acks": "all",
+     "isr": "low"
+    },
+    "events": [
+     "ProduceResponse {topic}-3: NOT_ENOUGH_REPLICAS"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "sender",
+    "dir": "fail",
+    "text": "This error is retriable. The Sender keeps retrying until a follower catches up or delivery.timeout.ms (2 minutes) runs out; then your callback gets the exception.",
+    "when": {
+     "acks": "all",
+     "isr": "low"
+    },
+    "events": [
+     "Sender: retriable error, will retry until delivery.timeout.ms"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "producerApp",
+    "dir": "fail",
+    "text": "In this run the replicas do not recover in time, so the Future fails. Your callback decides what to do: log, alert, or send elsewhere.",
+    "when": {
+     "acks": "all",
+     "isr": "low"
+    },
+    "events": [
+     "callback.onCompletion(null, NotEnoughReplicasException)"
+    ],
+    "ms": 120000
+   },
+   {
+    "node": "partition",
+    "dir": "down",
+    "text": "The leader for {topic}-3 accepts the write. It holds the ISR list: brokers 1, 2 and 3 are in sync.",
+    "when": {
+     "isrOk": "yes"
+    },
+    "events": [
+     "Partition.appendRecordsToLeader()"
+    ]
+   },
+   {
+    "node": "log",
+    "dir": "down",
+    "text": "UnifiedLog validates the batch and assigns offsets. Your record becomes offset 52,817.",
+    "when": {
+     "isrOk": "yes"
+    },
+    "events": [
+     "UnifiedLog.appendAsLeader()",
+     "assign offsets 52804..52817"
+    ]
+   },
+   {
+    "node": "producerState",
+    "dir": "down",
+    "text": "Producer 4001 last wrote sequence 86 to this partition, and this batch starts at 87, so it is next in order.",
+    "when": {
+     "isrOk": "yes"
+    },
+    "events": [
+     "ProducerStateManager: seq 87 follows 86, ok"
+    ]
+   },
+   {
+    "node": "segment",
+    "dir": "down",
+    "text": "The batch is appended to the active segment file; the offset index gets an entry every 4 KB.",
+    "when": {
+     "isrOk": "yes"
+    },
+    "events": [
+     "LogSegment.append(): 00000000000052104.log"
+    ]
+   },
+   {
+    "node": "disk",
+    "dir": "down",
+    "text": "The bytes go into the OS page cache. Kafka does not fsync here by default; the copies on other brokers are what make the data durable.",
+    "when": {
+     "isrOk": "yes"
+    },
+    "events": [
+     "page cache write, no fsync (log.flush.interval.messages = unlimited)"
+    ]
+   },
+   {
+    "node": "disk",
+    "dir": "down",
+    "text": "With acks=0 the broker sends no response at all. The record is stored, but the producer was never told.",
+    "when": {
+     "acks": "0"
+    }
+   },
+   {
+    "node": "socket",
+    "dir": "up",
+    "text": "With acks=1 the leader answers as soon as it has written the batch, without waiting for followers.",
+    "when": {
+     "acks": "1"
+    },
+    "events": [
+     "ProduceResponse {topic}-3: offset 52804 (your record 52817)"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "replicaMgr",
+    "dir": "up",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "quiet": true
+   },
+   {
+    "node": "purgatory",
+    "dir": "down",
+    "text": "acks=all: the request is parked in the produce purgatory until the high watermark passes offset 52,817.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "DelayedProduce created: waiting for offset 52818 on {topic}-3"
+    ]
+   },
+   {
+    "node": "followers",
+    "dir": "down",
+    "text": "Brokers 2 and 3 each have a Fetch request open to broker 1 and receive the new batch.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "FetchResponse -> broker 2, broker 3: 1 batch"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "followers",
+    "dir": "down",
+    "text": "The followers append the batch to their own logs, then fetch again from offset 52,818, which tells the leader they have everything before it.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "ReplicaFetcherThread.processPartitionData()",
+     "next Fetch from offset 52818"
+    ],
+    "ms": 3
+   },
+   {
+    "node": "apis",
+    "dir": "up",
+    "text": "The leader handles the followers' next Fetch requests.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "KafkaApis.handleFetchRequest(isFromFollower)"
+    ]
+   },
+   {
+    "node": "partition",
+    "dir": "up",
+    "text": "Both followers have reached offset 52,818, so the high watermark moves there. Consumers can now read your record.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "Partition.updateFollowerFetchState()",
+     "high watermark 52804 -> 52818"
+    ]
+   },
+   {
+    "node": "purgatory",
+    "dir": "up",
+    "text": "The high watermark moved, so the waiting request is checked again. Enough replicas have it: it completes.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "DelayedProduce.tryComplete(): satisfied",
+     "onComplete()"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "up",
+    "text": "The response goes back through a network thread.",
+    "when": {
+     "acks": "all",
+     "isrOk": "yes"
+    },
+    "events": [
+     "ProduceResponse {topic}-3: offset 52804 (your record 52817)"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "netclient",
+    "dir": "fail",
+    "text": "The broker wrote the batch and replied, but the connection drops before the response arrives.",
+    "when": {
+     "net": "lost"
+    },
+    "events": [
+     "connection to broker lost, no response"
+    ],
+    "ms": 30000
+   },
+   {
+    "node": "sender",
+    "dir": "fail",
+    "text": "After request.timeout.ms the Sender cannot know whether the write happened, so it retries the same batch with the same producer ID and sequence numbers.",
+    "when": {
+     "net": "lost"
+    },
+    "events": [
+     "retry: ProduceRequest (producerId 4001, seq 87..100)"
+    ],
+    "ms": 100
+   },
+   {
+    "node": "netclient",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "socket",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "reqchan",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "handlers",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "apis",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "replicaMgr",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "partition",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "log",
+    "dir": "down",
+    "when": {
+     "net": "lost"
+    },
+    "quiet": true
+   },
+   {
+    "node": "producerState",
+    "dir": "down",
+    "text": "Sequence 87 to 100 from producer 4001 is already in the log: this is a duplicate. The broker does not write it again.",
+    "when": {
+     "net": "lost"
+    },
+    "events": [
+     "duplicate batch: seq 87..100 already at offsets 52804..52817"
+    ]
+   },
+   {
+    "node": "socket",
+    "dir": "up",
+    "text": "It returns the offsets from the first write, so your record exists exactly once.",
+    "when": {
+     "net": "lost"
+    },
+    "events": [
+     "ProduceResponse {topic}-3: offset 52804 (duplicate, not rewritten)"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "netclient",
+    "dir": "up",
+    "text": "The response arrives back at the producer.",
+    "when": {
+     "acks": [
+      "1",
+      "all"
+     ],
+     "isrOk": "yes"
+    },
+    "ms": 1
+   },
+   {
+    "node": "sender",
+    "dir": "up",
+    "text": "The Sender completes the batch.",
+    "when": {
+     "acks": [
+      "1",
+      "all"
+     ],
+     "isrOk": "yes"
+    },
+    "events": [
+     "Sender.completeBatch(): success"
+    ]
+   },
+   {
+    "node": "producerApp",
+    "dir": "up",
+    "text": "Your callback runs with the record's metadata: partition 3, offset 52,817. The Future completes.",
+    "when": {
+     "acks": [
+      "1",
+      "all"
+     ],
+     "isrOk": "yes"
+    },
+    "events": [
+     "callback.onCompletion(RecordMetadata({topic}-3@52817), null)"
+    ]
+   }
+  ]
+ }
+}

@@ -1,0 +1,1661 @@
+{
+ "name": "OkHttp",
+ "summary": "OkHttp is an HTTP client for Java, Kotlin and Android. Your app builds a Request, hands it to an OkHttpClient, and gets a Response back. In between, every request passes through a chain of interceptors that handles retries, headers, caching and connections, so your code never deals with sockets, TLS or HTTP/2 directly.",
+ "root": "okhttp/src/commonJvmAndroid/kotlin/okhttp3",
+ "groups": [
+  {
+   "id": "app",
+   "label": "Your app"
+  },
+  {
+   "id": "api",
+   "label": "Public API",
+   "description": "The classes your code uses directly."
+  },
+  {
+   "id": "pipeline",
+   "label": "Request pipeline",
+   "description": "Interceptors, run in this order for every request. Each can change the request, answer it, or pass it on."
+  },
+  {
+   "id": "network",
+   "label": "Connections",
+   "description": "Finding a server and keeping sockets open for reuse."
+  },
+  {
+   "id": "wire",
+   "label": "Protocols and platform",
+   "description": "Bytes on the wire, TLS, and background work."
+  },
+  {
+   "id": "addons",
+   "label": "Optional modules",
+   "description": "Separate artifacts you add when you need them."
+  }
+ ],
+ "nodes": [
+  {
+   "id": "app",
+   "group": "app",
+   "kind": "external",
+   "label": "Your code",
+   "description": "Builds a Request, calls the client, reads the Response. Usually keeps one OkHttpClient for the whole app."
+  },
+  {
+   "id": "client",
+   "group": "api",
+   "kind": "core",
+   "label": "OkHttpClient",
+   "description": "Holds all configuration: timeouts, interceptors, cache, cookie jar, DNS, connection pool. Creates a Call for each request. Share one instance so calls can reuse connections and threads.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/OkHttpClient.kt"
+   ]
+  },
+  {
+   "id": "messages",
+   "group": "api",
+   "kind": "core",
+   "label": "Request and Response",
+   "description": "Immutable HTTP messages: URL, method, headers and body. HttpUrl parses and builds URLs; Headers holds header fields.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Request.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Response.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/HttpUrl.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Headers.kt"
+   ]
+  },
+  {
+   "id": "call",
+   "group": "api",
+   "kind": "core",
+   "label": "Call",
+   "description": "One request in flight. execute() runs it on your thread; enqueue() runs it in the background and calls you back. RealCall builds the interceptor chain and can be cancelled.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Call.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealCall.kt"
+   ]
+  },
+  {
+   "id": "dispatcher",
+   "group": "api",
+   "kind": "core",
+   "label": "Dispatcher",
+   "description": "Runs enqueued calls on a thread pool and limits how many run at once: 64 in total and 5 per host by default. Extra calls wait in a queue.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Dispatcher.kt"
+   ]
+  },
+  {
+   "id": "websocket",
+   "group": "api",
+   "kind": "core",
+   "label": "WebSocket",
+   "description": "newWebSocket() upgrades an HTTP call to a WebSocket, then keeps the connection open to send and receive messages.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/WebSocket.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/ws/RealWebSocket.kt"
+   ]
+  },
+  {
+   "id": "userInt",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Your interceptors",
+   "description": "Added with addInterceptor(). Run first and once per call, before retries and redirects. Typical uses: logging, auth headers, metrics.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Interceptor.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http/RealInterceptorChain.kt"
+   ]
+  },
+  {
+   "id": "retry",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Retry and redirects",
+   "description": "Retries after recoverable connection failures, follows 3xx redirects, and asks the Authenticator for credentials when a server or proxy replies 401 or 407.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http/RetryAndFollowUpInterceptor.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Authenticator.kt"
+   ]
+  },
+  {
+   "id": "bridge",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Bridge",
+   "description": "Turns your request into a network request: adds Host, User-Agent, Content-Length, Accept-Encoding: gzip and cookies from the CookieJar. On the way back it saves cookies and unzips the body.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http/BridgeInterceptor.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/CookieJar.kt"
+   ]
+  },
+  {
+   "id": "cache",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Cache",
+   "description": "If a Cache is configured, answers from disk when HTTP caching rules allow, sends conditional requests when a cached copy is stale, and stores cacheable responses.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/cache/CacheInterceptor.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Cache.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/cache/DiskLruCache.kt"
+   ]
+  },
+  {
+   "id": "connect",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Connect",
+   "description": "Gets a connection for this request, either a pooled one or a brand new one, and opens an Exchange: one request and response on that connection.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/ConnectInterceptor.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/ExchangeFinder.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/Exchange.kt"
+   ]
+  },
+  {
+   "id": "netInt",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Network interceptors",
+   "description": "Added with addNetworkInterceptor(). See the request exactly as sent, including redirects and retries, and the raw response before it is unzipped.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Interceptor.kt"
+   ]
+  },
+  {
+   "id": "server",
+   "group": "pipeline",
+   "kind": "step",
+   "label": "Call server",
+   "description": "The last step. Writes the request headers and body to the connection and reads the response back.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http/CallServerInterceptor.kt"
+   ]
+  },
+  {
+   "id": "planner",
+   "group": "network",
+   "kind": "core",
+   "label": "Route planner",
+   "description": "Decides how to reach the server: DNS lookup, which proxy, which IP address to try next. Remembers routes that failed recently so it tries others first.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealRoutePlanner.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RouteSelector.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RouteDatabase.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/Dns.kt"
+   ]
+  },
+  {
+   "id": "pool",
+   "group": "network",
+   "kind": "store",
+   "label": "Connection pool",
+   "description": "Keeps idle connections open so later requests to the same server skip the TCP and TLS handshake. By default holds 5 idle connections for up to 5 minutes.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/ConnectionPool.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealConnectionPool.kt"
+   ]
+  },
+  {
+   "id": "conn",
+   "group": "network",
+   "kind": "core",
+   "label": "Connection",
+   "description": "One socket to one server. Connecting means TCP connect, TLS handshake, and agreeing on HTTP/1.1 or HTTP/2. Can be shared by many requests over time.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/RealConnection.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/connection/ConnectPlan.kt"
+   ]
+  },
+  {
+   "id": "h1",
+   "group": "wire",
+   "kind": "core",
+   "label": "HTTP/1.1",
+   "description": "Writes one request and reads one response at a time on a connection.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http1/Http1ExchangeCodec.kt"
+   ]
+  },
+  {
+   "id": "h2",
+   "group": "wire",
+   "kind": "core",
+   "label": "HTTP/2",
+   "description": "Runs many requests at once as separate streams over a single connection.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http2/Http2ExchangeCodec.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/http2/Http2Connection.kt"
+   ]
+  },
+  {
+   "id": "platform",
+   "group": "wire",
+   "kind": "core",
+   "label": "Platform and TLS",
+   "description": "Hides differences between Android, JVM versions and security providers: setting up TLS, ALPN protocol negotiation, hostname checks and certificate pinning.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/platform/Platform.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/tls/OkHostnameVerifier.kt",
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/CertificatePinner.kt"
+   ]
+  },
+  {
+   "id": "tasks",
+   "group": "wire",
+   "kind": "core",
+   "label": "Task runner",
+   "description": "OkHttp's own background scheduler. Runs connection pool cleanup, HTTP/2 writers and timeouts.",
+   "files": [
+    "okhttp/src/commonJvmAndroid/kotlin/okhttp3/internal/concurrent/TaskRunner.kt"
+   ]
+  },
+  {
+   "id": "logging",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Logging interceptor",
+   "description": "Logs requests and responses at a chosen level of detail. Add it as an interceptor.",
+   "files": [
+    "okhttp-logging-interceptor/src/main/kotlin/okhttp3/logging/HttpLoggingInterceptor.kt"
+   ]
+  },
+  {
+   "id": "doh",
+   "group": "addons",
+   "kind": "addon",
+   "label": "DNS over HTTPS",
+   "description": "A Dns implementation that resolves hostnames over HTTPS instead of the system resolver.",
+   "files": [
+    "okhttp-dnsoverhttps/src/main/kotlin/okhttp3/dnsoverhttps/DnsOverHttps.kt"
+   ]
+  },
+  {
+   "id": "sse",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Server-sent events",
+   "description": "Reads a stream of server-sent events from a long-lived response.",
+   "files": [
+    "okhttp-sse/src/main/kotlin/okhttp3/sse/EventSources.kt"
+   ]
+  },
+  {
+   "id": "coroutines",
+   "group": "addons",
+   "kind": "addon",
+   "label": "Coroutines",
+   "description": "Call.executeAsync(): a suspend function for Kotlin coroutines.",
+   "files": [
+    "okhttp-coroutines/src/main/kotlin/okhttp3/coroutines/ExecuteAsync.kt"
+   ]
+  },
+  {
+   "id": "mockserver",
+   "group": "addons",
+   "kind": "addon",
+   "label": "MockWebServer",
+   "description": "A scriptable local HTTP server for testing code that uses OkHttp.",
+   "files": [
+    "mockwebserver/src/main/kotlin/mockwebserver3/MockWebServer.kt"
+   ]
+  },
+  {
+   "id": "remote",
+   "group": "wire",
+   "kind": "external",
+   "label": "Web server",
+   "description": "The server being called. Outside OkHttp: it only sees bytes arriving on a socket."
+  }
+ ],
+ "edges": [
+  {
+   "from": "app",
+   "to": "client",
+   "label": "configures"
+  },
+  {
+   "from": "app",
+   "to": "messages",
+   "label": "builds a Request"
+  },
+  {
+   "from": "client",
+   "to": "call",
+   "label": "newCall()"
+  },
+  {
+   "from": "client",
+   "to": "websocket",
+   "label": "newWebSocket()"
+  },
+  {
+   "from": "call",
+   "to": "dispatcher",
+   "label": "enqueue()"
+  },
+  {
+   "from": "call",
+   "to": "userInt",
+   "label": "runs the chain"
+  },
+  {
+   "from": "userInt",
+   "to": "retry"
+  },
+  {
+   "from": "retry",
+   "to": "bridge"
+  },
+  {
+   "from": "bridge",
+   "to": "cache"
+  },
+  {
+   "from": "cache",
+   "to": "connect",
+   "label": "cache miss"
+  },
+  {
+   "from": "connect",
+   "to": "netInt"
+  },
+  {
+   "from": "netInt",
+   "to": "server"
+  },
+  {
+   "from": "connect",
+   "to": "planner",
+   "label": "needs a connection"
+  },
+  {
+   "from": "planner",
+   "to": "pool",
+   "label": "reuse one?"
+  },
+  {
+   "from": "planner",
+   "to": "conn",
+   "label": "or open new"
+  },
+  {
+   "from": "conn",
+   "to": "pool",
+   "label": "kept for reuse"
+  },
+  {
+   "from": "conn",
+   "to": "platform",
+   "label": "TLS handshake"
+  },
+  {
+   "from": "server",
+   "to": "h1"
+  },
+  {
+   "from": "server",
+   "to": "h2"
+  },
+  {
+   "from": "h2",
+   "to": "tasks",
+   "label": "writer threads"
+  },
+  {
+   "from": "pool",
+   "to": "tasks",
+   "label": "cleanup"
+  },
+  {
+   "from": "websocket",
+   "to": "call",
+   "label": "upgrades a call"
+  },
+  {
+   "from": "logging",
+   "to": "userInt",
+   "label": "plugs in"
+  },
+  {
+   "from": "doh",
+   "to": "planner",
+   "label": "replaces DNS"
+  },
+  {
+   "from": "sse",
+   "to": "client",
+   "label": "uses"
+  },
+  {
+   "from": "coroutines",
+   "to": "call",
+   "label": "wraps"
+  },
+  {
+   "from": "mockserver",
+   "to": "h2",
+   "label": "speaks HTTP to tests"
+  },
+  {
+   "from": "h2",
+   "to": "remote",
+   "label": "frames on the wire"
+  },
+  {
+   "from": "h1",
+   "to": "remote",
+   "label": "bytes on the wire"
+  }
+ ],
+ "flows": [
+  {
+   "id": "request",
+   "title": "Send a request",
+   "steps": [
+    {
+     "node": "app",
+     "text": "Your code builds a Request and calls client.newCall(request).execute()."
+    },
+    {
+     "node": "client",
+     "text": "The client creates a Call carrying its configuration."
+    },
+    {
+     "node": "call",
+     "text": "The Call builds the interceptor chain and starts it."
+    },
+    {
+     "node": "userInt",
+     "text": "Your interceptors run first, for example to add an auth header."
+    },
+    {
+     "node": "retry",
+     "text": "This step stays in the loop: if anything below fails or redirects, it tries again."
+    },
+    {
+     "node": "bridge",
+     "text": "Default headers and cookies are added; gzip is requested."
+    },
+    {
+     "node": "cache",
+     "text": "No usable cached copy, so the request continues to the network."
+    },
+    {
+     "node": "connect",
+     "text": "A connection is needed for this host."
+    },
+    {
+     "node": "planner",
+     "text": "The planner checks the pool first."
+    },
+    {
+     "node": "pool",
+     "text": "An idle connection to this host exists, so it is reused. No handshake."
+    },
+    {
+     "node": "netInt",
+     "text": "Network interceptors see the final request."
+    },
+    {
+     "node": "server",
+     "text": "The request is written and the response headers are read."
+    },
+    {
+     "node": "h2",
+     "text": "Over HTTP/2 this request is one stream among many on the shared connection."
+    }
+   ]
+  },
+  {
+   "id": "newconn",
+   "title": "Open a new connection",
+   "steps": [
+    {
+     "node": "connect",
+     "text": "The Connect step asks for a connection."
+    },
+    {
+     "node": "planner",
+     "text": "Nothing reusable in the pool, so the planner resolves DNS and picks a proxy and IP address."
+    },
+    {
+     "node": "conn",
+     "text": "A socket is opened to that address."
+    },
+    {
+     "node": "platform",
+     "text": "TLS handshake, hostname check, optional certificate pinning, and ALPN to choose HTTP/2 or HTTP/1.1."
+    },
+    {
+     "node": "pool",
+     "text": "The new connection goes into the pool so later requests can reuse it."
+    },
+    {
+     "node": "server",
+     "text": "The request is sent on it."
+    }
+   ]
+  },
+  {
+   "id": "cached",
+   "title": "Answer from cache",
+   "steps": [
+    {
+     "node": "call",
+     "text": "A call starts as usual."
+    },
+    {
+     "node": "bridge",
+     "text": "Headers are prepared."
+    },
+    {
+     "node": "cache",
+     "text": "A fresh cached response exists, so the Cache step returns it. Nothing below this step runs."
+    }
+   ]
+  },
+  {
+   "id": "async",
+   "title": "Run in the background",
+   "steps": [
+    {
+     "node": "app",
+     "text": "Your code calls call.enqueue(callback)."
+    },
+    {
+     "node": "call",
+     "text": "The Call is handed to the Dispatcher instead of running now."
+    },
+    {
+     "node": "dispatcher",
+     "text": "It runs when fewer than 64 calls (5 per host) are active, on the dispatcher's thread pool."
+    },
+    {
+     "node": "userInt",
+     "text": "From here the chain is the same as a normal request; the callback gets the Response."
+    }
+   ]
+  }
+ ],
+ "changes": [
+  {
+   "task": "Add a header to every request, or log traffic",
+   "nodes": [
+    "userInt",
+    "logging"
+   ]
+  },
+  {
+   "task": "Change retry, redirect or authentication behavior",
+   "nodes": [
+    "retry"
+   ]
+  },
+  {
+   "task": "Tune connection reuse or keep-alive",
+   "nodes": [
+    "pool",
+    "conn"
+   ]
+  },
+  {
+   "task": "Change how hosts are resolved",
+   "nodes": [
+    "planner",
+    "doh"
+   ]
+  },
+  {
+   "task": "Fix TLS or Android-specific issues",
+   "nodes": [
+    "platform"
+   ]
+  },
+  {
+   "task": "Work on HTTP/2 streams or flow control",
+   "nodes": [
+    "h2"
+   ]
+  },
+  {
+   "task": "Change caching rules",
+   "nodes": [
+    "cache"
+   ]
+  },
+  {
+   "task": "Limit concurrency of async calls",
+   "nodes": [
+    "dispatcher"
+   ]
+  }
+ ],
+ "scenario": {
+  "title": "Send a call",
+  "input": {
+   "label": "URL",
+   "value": "https://api.example.com/users/42"
+  },
+  "options": [
+   {
+    "id": "mode",
+    "label": "Run it",
+    "choices": [
+     {
+      "value": "execute",
+      "label": "execute()"
+     },
+     {
+      "value": "enqueue",
+      "label": "enqueue()"
+     },
+     {
+      "value": "queued",
+      "label": "enqueue(), dispatcher full"
+     }
+    ]
+   },
+   {
+    "id": "interceptor",
+    "label": "Your interceptor",
+    "choices": [
+     {
+      "value": "auth",
+      "label": "Adds auth header"
+     },
+     {
+      "value": "none",
+      "label": "None"
+     }
+    ]
+   },
+   {
+    "id": "cache",
+    "label": "Cache",
+    "choices": [
+     {
+      "value": "miss",
+      "label": "Nothing cached"
+     },
+     {
+      "value": "hit",
+      "label": "Fresh copy"
+     },
+     {
+      "value": "conditional",
+      "label": "Stale copy"
+     }
+    ]
+   },
+   {
+    "id": "conn",
+    "label": "Connection",
+    "enabledWhen": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "choices": [
+     {
+      "value": "reuse",
+      "label": "Reuse pooled"
+     },
+     {
+      "value": "new",
+      "label": "Open new"
+     }
+    ]
+   },
+   {
+    "id": "proto",
+    "label": "Protocol",
+    "enabledWhen": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "choices": [
+     {
+      "value": "h2",
+      "label": "HTTP/2",
+      "vars": {
+       "protoNode": "h2",
+       "protoName": "h2",
+       "protoLabel": "HTTP/2",
+       "protoSend": "The request goes out as a new stream on the shared HTTP/2 connection. Other calls can use it at the same time."
+      }
+     },
+     {
+      "value": "h1",
+      "label": "HTTP/1.1",
+      "vars": {
+       "protoNode": "h1",
+       "protoName": "http/1.1",
+       "protoLabel": "HTTP/1.1",
+       "protoSend": "The request is written on the HTTP/1.1 connection, which carries one request at a time."
+      }
+     }
+    ]
+   },
+   {
+    "id": "server",
+    "label": "Server",
+    "enabledWhen": {
+     "cache": "miss"
+    },
+    "choices": [
+     {
+      "value": "ok",
+      "label": "200 OK"
+     },
+     {
+      "value": "redirect",
+      "label": "302 redirect"
+     },
+     {
+      "value": "auth",
+      "label": "401, then auth"
+     },
+     {
+      "value": "drop",
+      "label": "Drops connection"
+     }
+    ]
+   }
+  ],
+  "steps": [
+   {
+    "node": "app",
+    "dir": "down",
+    "text": "Your code builds a GET request for {url} and calls client.newCall(request).execute(). This thread now waits for the answer.",
+    "when": {
+     "mode": "execute"
+    },
+    "show": "GET {url}\n(no headers yet)"
+   },
+   {
+    "node": "app",
+    "dir": "down",
+    "text": "Your code builds a GET request for {url} and calls client.newCall(request).enqueue(callback), then carries on. The answer arrives later on another thread.",
+    "when": {
+     "mode": [
+      "enqueue",
+      "queued"
+     ]
+    },
+    "show": "GET {url}\n(no headers yet)"
+   },
+   {
+    "node": "client",
+    "dir": "down",
+    "text": "newCall() wraps the request in a Call that carries the client's settings: timeouts, interceptors, cache, pool."
+   },
+   {
+    "node": "call",
+    "dir": "down",
+    "text": "The call starts.",
+    "events": [
+     "callStart"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "The Dispatcher has a free slot, so the call starts right away on a background thread.",
+    "when": {
+     "mode": "enqueue"
+    },
+    "ms": 1
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "64 calls are already running (or 5 to {host}), so this call waits in the Dispatcher's queue.",
+    "when": {
+     "mode": "queued"
+    },
+    "events": [
+     "dispatcherQueueStart"
+    ],
+    "ms": 240
+   },
+   {
+    "node": "dispatcher",
+    "dir": "down",
+    "text": "Another call to {host} finishes. This one gets its slot and starts on a background thread.",
+    "when": {
+     "mode": "queued"
+    },
+    "events": [
+     "dispatcherQueueEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "userInt",
+    "dir": "down",
+    "text": "Step 1. No application interceptors are installed, so the request passes straight through.",
+    "when": {
+     "interceptor": "none"
+    }
+   },
+   {
+    "node": "userInt",
+    "dir": "down",
+    "text": "Step 1. Your interceptor adds an Authorization header to every request.",
+    "when": {
+     "interceptor": "auth"
+    },
+    "show": "GET {url}\nAuthorization: Bearer eyJhbGciOi..."
+   },
+   {
+    "node": "retry",
+    "dir": "down",
+    "text": "Step 2. Retry and redirects starts its loop. If anything below fails or asks for a follow-up, control comes back here."
+   },
+   {
+    "node": "bridge",
+    "dir": "down",
+    "text": "Step 3. Bridge adds the headers every HTTP request needs and asks for gzip, so OkHttp can unzip for you.",
+    "when": {
+     "interceptor": "none"
+    },
+    "show": "GET {path}\nHost: {host}\nConnection: Keep-Alive\nAccept-Encoding: gzip\nUser-Agent: okhttp/5.x"
+   },
+   {
+    "node": "bridge",
+    "dir": "down",
+    "text": "Step 3. Bridge adds the headers every HTTP request needs and asks for gzip, so OkHttp can unzip for you.",
+    "when": {
+     "interceptor": "auth"
+    },
+    "show": "GET {path}\nHost: {host}\nAuthorization: Bearer eyJhbGciOi...\nConnection: Keep-Alive\nAccept-Encoding: gzip\nUser-Agent: okhttp/5.x"
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "text": "Step 4. No cached copy of {path}, so the request continues to the network.",
+    "when": {
+     "cache": "miss"
+    },
+    "events": [
+     "cacheMiss"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "text": "Step 4. A cached copy exists and is still fresh (its max-age has not run out). The Cache step answers right here. Nothing below runs.",
+    "when": {
+     "cache": "hit"
+    },
+    "events": [
+     "cacheHit"
+    ],
+    "ms": 2,
+    "show": "HTTP/2 200  (from cache)\ncontent-type: application/json\ncache-control: max-age=60\netag: \"v8\""
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "text": "Step 4. A cached copy exists but is stale. The Cache step adds If-None-Match so the server can reply 304 if nothing changed.",
+    "when": {
+     "cache": "conditional",
+     "interceptor": "none"
+    },
+    "events": [
+     "cacheConditionalHit"
+    ],
+    "ms": 1,
+    "show": "GET {path}\nHost: {host}\nConnection: Keep-Alive\nAccept-Encoding: gzip\nUser-Agent: okhttp/5.x\nIf-None-Match: \"v8\""
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "text": "Step 4. A cached copy exists but is stale. The Cache step adds If-None-Match so the server can reply 304 if nothing changed.",
+    "when": {
+     "cache": "conditional",
+     "interceptor": "auth"
+    },
+    "events": [
+     "cacheConditionalHit"
+    ],
+    "ms": 1,
+    "show": "GET {path}\nHost: {host}\nAuthorization: Bearer eyJhbGciOi...\nConnection: Keep-Alive\nAccept-Encoding: gzip\nUser-Agent: okhttp/5.x\nIf-None-Match: \"v8\""
+   },
+   {
+    "node": "connect",
+    "dir": "down",
+    "text": "Step 5. Connect needs a connection to {host}.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    }
+   },
+   {
+    "node": "planner",
+    "dir": "down",
+    "text": "The route planner checks the connection pool first.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "reuse"
+    }
+   },
+   {
+    "node": "pool",
+    "dir": "down",
+    "text": "An idle connection to {host} is in the pool, so it is reused. No DNS, no TCP, no TLS.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "reuse"
+    },
+    "events": [
+     "connectionAcquired"
+    ]
+   },
+   {
+    "node": "planner",
+    "dir": "down",
+    "text": "Nothing reusable in the pool. The planner picks a proxy and resolves {host}.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "new"
+    },
+    "events": [
+     "proxySelectStart",
+     "proxySelectEnd [DIRECT]",
+     "dnsStart {host}",
+     "dnsEnd [203.0.113.10, 2001:db8::10]"
+    ],
+    "ms": 18
+   },
+   {
+    "node": "conn",
+    "dir": "down",
+    "text": "Opens a TCP socket to 203.0.113.10:443.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "new"
+    },
+    "events": [
+     "connectStart 203.0.113.10:443"
+    ],
+    "ms": 24
+   },
+   {
+    "node": "platform",
+    "dir": "down",
+    "text": "TLS handshake: the certificate is checked against {host}, and ALPN agrees on {protoLabel}.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "new"
+    },
+    "events": [
+     "secureConnectStart",
+     "secureConnectEnd TLSv1.3"
+    ],
+    "ms": 41
+   },
+   {
+    "node": "pool",
+    "dir": "down",
+    "text": "The new connection is stored in the pool, so later calls to {host} can skip all of that.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ],
+     "conn": "new"
+    },
+    "events": [
+     "connectEnd {protoName}",
+     "connectionAcquired"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "netInt",
+    "dir": "down",
+    "text": "Step 6. Network interceptors see the request exactly as it will be sent.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    }
+   },
+   {
+    "node": "server",
+    "dir": "down",
+    "text": "Step 7. Call server writes the request headers to the connection.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "events": [
+     "requestHeadersStart",
+     "requestHeadersEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "down",
+    "text": "{protoSend}",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "ms": 1
+   },
+   {
+    "node": "remote",
+    "dir": "down",
+    "text": "The server closes the connection before answering, the classic stale-pooled-connection problem.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "responseFailed java.io.IOException: unexpected end of stream"
+    ],
+    "ms": 30
+   },
+   {
+    "node": "retry",
+    "dir": "fail",
+    "text": "The failure travels back up to Retry and redirects. A GET is safe to repeat, so it retries on a different connection.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "connectionReleased",
+     "retryDecision retry=true"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "bridge",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "quiet": true
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "quiet": true
+   },
+   {
+    "node": "connect",
+    "dir": "down",
+    "text": "Connect is asked again, and this time opens a fresh connection.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    }
+   },
+   {
+    "node": "planner",
+    "dir": "down",
+    "text": "DNS answers instantly the second time.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "dnsStart {host}",
+     "dnsEnd [203.0.113.10, 2001:db8::10]"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "conn",
+    "dir": "down",
+    "text": "Opens a new TCP socket.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "connectStart 203.0.113.10:443"
+    ],
+    "ms": 22
+   },
+   {
+    "node": "platform",
+    "dir": "down",
+    "text": "New TLS handshake.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "secureConnectStart",
+     "secureConnectEnd TLSv1.3"
+    ],
+    "ms": 38
+   },
+   {
+    "node": "pool",
+    "dir": "down",
+    "text": "The fresh connection joins the pool.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "connectEnd {protoName}",
+     "connectionAcquired"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "netInt",
+    "dir": "down",
+    "text": "Step 6. Network interceptors see the request exactly as it will be sent.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    }
+   },
+   {
+    "node": "server",
+    "dir": "down",
+    "text": "Step 7. Call server writes the request headers to the connection.",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "events": [
+     "requestHeadersStart",
+     "requestHeadersEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "down",
+    "text": "{protoSend}",
+    "when": {
+     "cache": "miss",
+     "server": "drop"
+    },
+    "ms": 1
+   },
+   {
+    "node": "remote",
+    "dir": "up",
+    "text": "The server answers 302 Found: the resource moved to /v2{path}.",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "events": [
+     "responseHeadersStart",
+     "responseHeadersEnd 302"
+    ],
+    "ms": 82,
+    "show": "HTTP/2 302\nlocation: /v2{path}\ncontent-length: 0"
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "quiet": true
+   },
+   {
+    "node": "server",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "quiet": true
+   },
+   {
+    "node": "netInt",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "quiet": true
+   },
+   {
+    "node": "retry",
+    "dir": "up",
+    "text": "Retry and redirects reads the Location header and builds a follow-up GET for /v2{path}.",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "events": [
+     "followUpDecision -> GET {scheme}://{host}/v2{path}"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "bridge",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "quiet": true
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "quiet": true
+   },
+   {
+    "node": "connect",
+    "dir": "down",
+    "text": "Same host, so the follow-up reuses the connection that is already open.",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "events": [
+     "connectionReleased",
+     "connectionAcquired"
+    ]
+   },
+   {
+    "node": "netInt",
+    "dir": "down",
+    "text": "Step 6. Network interceptors see the request exactly as it will be sent.",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    }
+   },
+   {
+    "node": "server",
+    "dir": "down",
+    "text": "Step 7. Call server writes the request headers to the connection.",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "events": [
+     "requestHeadersStart",
+     "requestHeadersEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "down",
+    "text": "{protoSend}",
+    "when": {
+     "cache": "miss",
+     "server": "redirect"
+    },
+    "ms": 1
+   },
+   {
+    "node": "remote",
+    "dir": "up",
+    "text": "The server answers 401 Unauthorized: the server wants credentials.",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "events": [
+     "responseHeadersStart",
+     "responseHeadersEnd 401"
+    ],
+    "ms": 82,
+    "show": "HTTP/2 401\nwww-authenticate: Bearer realm=\"api\"\ncontent-length: 0"
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "quiet": true
+   },
+   {
+    "node": "server",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "quiet": true
+   },
+   {
+    "node": "netInt",
+    "dir": "up",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "quiet": true
+   },
+   {
+    "node": "retry",
+    "dir": "up",
+    "text": "Retry and redirects asks the client's Authenticator, which returns the request with a fresh token.",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "events": [
+     "followUpDecision -> GET {url} (new Authorization)"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "bridge",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "quiet": true
+   },
+   {
+    "node": "cache",
+    "dir": "down",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "quiet": true
+   },
+   {
+    "node": "connect",
+    "dir": "down",
+    "text": "Same host, so the follow-up reuses the connection that is already open.",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "events": [
+     "connectionReleased",
+     "connectionAcquired"
+    ]
+   },
+   {
+    "node": "netInt",
+    "dir": "down",
+    "text": "Step 6. Network interceptors see the request exactly as it will be sent.",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    }
+   },
+   {
+    "node": "server",
+    "dir": "down",
+    "text": "Step 7. Call server writes the request headers to the connection.",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "events": [
+     "requestHeadersStart",
+     "requestHeadersEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "down",
+    "text": "{protoSend}",
+    "when": {
+     "cache": "miss",
+     "server": "auth"
+    },
+    "ms": 1
+   },
+   {
+    "node": "remote",
+    "dir": "up",
+    "text": "The server answers 200 OK with a gzipped JSON body.",
+    "when": {
+     "cache": "miss"
+    },
+    "events": [
+     "responseHeadersStart",
+     "responseHeadersEnd 200"
+    ],
+    "ms": 84,
+    "show": "HTTP/2 200\ncontent-type: application/json\ncontent-encoding: gzip\ncache-control: max-age=60\netag: \"v9\"\n\n(482 bytes, gzipped)"
+   },
+   {
+    "node": "remote",
+    "dir": "up",
+    "text": "The server answers 304 Not Modified: the cached copy is still correct, so no body is sent.",
+    "when": {
+     "cache": "conditional"
+    },
+    "events": [
+     "responseHeadersStart",
+     "responseHeadersEnd 304"
+    ],
+    "ms": 61,
+    "show": "HTTP/2 304\netag: \"v8\"\ncache-control: max-age=60"
+   },
+   {
+    "node": "{protoNode}",
+    "dir": "up",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "quiet": true
+   },
+   {
+    "node": "server",
+    "dir": "up",
+    "text": "Call server reads the response headers and body.",
+    "when": {
+     "cache": "miss"
+    },
+    "events": [
+     "responseBodyStart",
+     "responseBodyEnd 482 bytes"
+    ],
+    "ms": 6
+   },
+   {
+    "node": "server",
+    "dir": "up",
+    "text": "Call server reads the 304 headers. There is no body.",
+    "when": {
+     "cache": "conditional"
+    },
+    "ms": 1
+   },
+   {
+    "node": "netInt",
+    "dir": "up",
+    "text": "Network interceptors see the raw response, still gzipped.",
+    "when": {
+     "cache": "miss"
+    }
+   },
+   {
+    "node": "netInt",
+    "dir": "up",
+    "when": {
+     "cache": "conditional"
+    },
+    "quiet": true
+   },
+   {
+    "node": "connect",
+    "dir": "up",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "quiet": true
+   },
+   {
+    "node": "cache",
+    "dir": "up",
+    "text": "The response allows caching for 60 seconds, so the Cache step stores a copy on disk.",
+    "when": {
+     "cache": "miss"
+    },
+    "ms": 2
+   },
+   {
+    "node": "cache",
+    "dir": "up",
+    "text": "304 means the stored copy is still good. The Cache step returns it with refreshed headers and updates the store.",
+    "when": {
+     "cache": "conditional"
+    },
+    "events": [
+     "cacheHit"
+    ],
+    "ms": 2,
+    "show": "HTTP/2 200  (cached body, revalidated)\ncontent-type: application/json\ncache-control: max-age=60\netag: \"v8\""
+   },
+   {
+    "node": "bridge",
+    "dir": "up",
+    "text": "Bridge saves any cookies, unzips the body and removes the Content-Encoding header.",
+    "when": {
+     "cache": "miss"
+    },
+    "ms": 1,
+    "show": "HTTP/2 200\ncontent-type: application/json\ncache-control: max-age=60\netag: \"v9\"\n\n{\"id\": 42, \"name\": \"Ada Lovelace\", ...}"
+   },
+   {
+    "node": "bridge",
+    "dir": "up",
+    "when": {
+     "cache": [
+      "hit",
+      "conditional"
+     ]
+    },
+    "quiet": true
+   },
+   {
+    "node": "retry",
+    "dir": "up",
+    "text": "Retry and redirects sees a final answer and stops looping.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    }
+   },
+   {
+    "node": "retry",
+    "dir": "up",
+    "when": {
+     "cache": "hit"
+    },
+    "quiet": true
+   },
+   {
+    "node": "userInt",
+    "dir": "up",
+    "text": "Your interceptors see the finished response on the way out."
+   },
+   {
+    "node": "call",
+    "dir": "up",
+    "text": "The response body is fully read, so the connection goes back to the pool idle. The call is done.",
+    "when": {
+     "cache": [
+      "miss",
+      "conditional"
+     ]
+    },
+    "events": [
+     "connectionReleased",
+     "callEnd"
+    ],
+    "ms": 1
+   },
+   {
+    "node": "call",
+    "dir": "up",
+    "text": "The call is done. No connection was ever used.",
+    "when": {
+     "cache": "hit"
+    },
+    "events": [
+     "callEnd"
+    ]
+   },
+   {
+    "node": "app",
+    "dir": "up",
+    "text": "execute() returns the Response to your code.",
+    "when": {
+     "mode": "execute"
+    }
+   },
+   {
+    "node": "app",
+    "dir": "up",
+    "text": "Your callback's onResponse() runs on the Dispatcher's thread with the Response.",
+    "when": {
+     "mode": [
+      "enqueue",
+      "queued"
+     ]
+    }
+   }
+  ]
+ }
+}
