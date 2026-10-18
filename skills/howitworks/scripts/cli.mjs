@@ -7,43 +7,45 @@ import { spawn, spawnSync } from "node:child_process";
 import { buildGraph } from "./lib/scan.mjs";
 import { analyze } from "./lib/analyze.mjs";
 import { buildMap, mapMarkdown } from "./lib/facts.mjs";
-import { buildPrompt, callClaude, parseSpec, validate, archMarkdown, renderHtml, SCHEMA, RULES,
+import { buildPrompt, claudeCodeAvailable, runClaudeCode, parseSpec, validate, archMarkdown, renderHtml, SCHEMA, RULES,
   buildScenarioPrompt, parseScenario, SCENARIO_SCHEMA, SCENARIO_RULES } from "./lib/arch.mjs";
 
 const HELP = `howitworks: draw how a repository works
 
 Usage
-  howitworks [repo]                 Generate the diagram and live simulator (needs ANTHROPIC_API_KEY)
-  howitworks scan [repo]            Write the prompt for an AI assistant to describe the repo
+  howitworks [repo]                 Draw the diagram and live simulator using your Claude Code login
   howitworks simulate [repo] --spec architecture.json
-                                          Add a live simulator to an existing description
+                                    Add a live simulator to an existing description
   howitworks render [repo] --spec architecture.json [--scenario scenario.json]
-                                          Draw the diagram from a description
-  howitworks map [repo]             Write REPO_MAP.md, a structural map of the repo
+                                    Check a description and draw it (no Claude needed)
+  howitworks scan [repo]            Write the prompt to paste into Claude yourself (no Claude Code needed)
+  howitworks map [repo]             Write REPO_MAP.md, a structural map of the repo (no Claude needed)
 
 [repo] is a local folder (default: current folder) or a git URL.
-Without installing, run any command as: npx howitworks-cli ...
+Without installing, run any command as: npx github:koppulapr2230/howitworks ...
 
 Options
   -o, --out DIR      Where to write files (default: current folder)
-  --spec FILE        Architecture description to render instead of generating one
+  --spec FILE        Description to render instead of generating one
   --scenario FILE    Live simulator to merge into the description when rendering
-  --no-sim           Skip generating the live simulator
+  --no-sim           Skip the live simulator
+  --model NAME       Model for Claude Code to use, e.g. sonnet or opus (default: your Claude Code default)
   --name NAME        Display name
-  --model ID         Claude model (default: claude-opus-5-5, or $HOWITWORKS_MODEL)
   --open             Open the diagram in your browser when done
   --bare             HTML body only, for hosts that add the <html> shell
   -h, --help         Show this help
 
+Requires Claude Code (the "claude" command) installed and logged in, for the commands that use Claude.
+
 Output
-  architecture.html  Interactive diagram: click parts, follow walkthroughs, play a live call if the description has a scenario
+  architecture.html  Interactive diagram: click parts, follow walkthroughs, play a live call
   ARCHITECTURE.md    The same content as text, for engineers and AI assistants
   architecture.json  The description the diagram is drawn from; edit it and re-run with --spec
 
 Languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C, C++.`;
 
 function parseArgs(argv) {
-  const a = { cmd: "diagram", repo: null, out: ".", spec: null, scenario: null, sim: true, name: null, model: process.env.HOWITWORKS_MODEL || "claude-opus-5-5", open: false, bare: false };
+  const a = { cmd: "diagram", repo: null, out: ".", spec: null, scenario: null, sim: true, name: null, model: null, open: false, bare: false };
   const rest = [...argv];
   if (["scan", "render", "map", "diagram", "simulate"].includes(rest[0])) a.cmd = rest.shift();
   while (rest.length) {
@@ -110,11 +112,31 @@ function writeOutputs(spec, root, a) {
   if (a.open) openFile(path.resolve(html));
 }
 
-async function addScenario(spec, root, a, key) {
-  const sp = buildScenarioPrompt(root, spec);
+function requireClaudeCode() {
+  if (claudeCodeAvailable()) return;
+  fail(`Claude Code is not installed (the "claude" command was not found).
+  Install it and log in: https://code.claude.com/docs/en/setup
+  Or, without Claude Code: run "howitworks scan", paste .howitworks/prompt.md into Claude,
+  save the reply as architecture.json, then "howitworks render --spec architecture.json".`);
+}
+
+function taskFile(root, file, text) {
+  const dir = path.join(root, ".howitworks"); fs.mkdirSync(dir, { recursive: true });
+  const f = path.join(dir, file); fs.writeFileSync(f, text); return f;
+}
+
+async function askClaude(file, root, a, what) {
+  const t0 = Date.now();
+  console.log(`\n${what}. Claude Code is reading the code; this usually takes a few minutes.`);
+  const r = await runClaudeCode(file, root, { model: a.model, log: line => console.log(line) });
+  console.log(`  done: read ${r.reads} file${r.reads === 1 ? "" : "s"} in ${Math.round((Date.now() - t0) / 1000)}s`);
+  return r.text;
+}
+
+async function addScenario(spec, root, a) {
   const main = spec.flows[0] ? `"${spec.flows[0].title}"` : "the main path";
-  console.log(`Asking ${a.model} to write a live simulator for ${main} (about ${Math.round(sp.length / 4).toLocaleString()} tokens of source) ...`);
-  try { spec.scenario = parseScenario(await callClaude(sp, { model: a.model, apiKey: key, maxTokens: 32000 })); }
+  const f = taskFile(root, "scenario-prompt.md", buildScenarioPrompt(root, spec));
+  try { spec.scenario = parseScenario(await askClaude(f, root, a, `Writing the live simulator for ${main}`)); }
   catch (e) { console.warn(`warning: could not generate the simulator (${e.message}); continuing without it.`); }
 }
 
@@ -122,9 +144,7 @@ async function main() {
   const a = parseArgs(process.argv.slice(2));
   const { root, name: dirName } = resolveRepo(a.repo);
   const name = a.name || dirName;
-
   const loadJson = f => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) { fail(`Could not read ${f}: ${e.message}`); } };
-  const key = process.env.ANTHROPIC_API_KEY;
 
   if (a.cmd === "render") {
     if (!a.spec) fail("render needs --spec architecture.json");
@@ -137,18 +157,10 @@ async function main() {
 
   if (a.cmd === "simulate") {
     if (!a.spec) fail("simulate needs --spec architecture.json");
+    requireClaudeCode();
     const spec = loadJson(a.spec); spec.name = a.name || spec.name || name;
     validate(spec, root);
-    const sp = buildScenarioPrompt(root, spec);
-    if (!key) {
-      const dir = path.join(a.out, ".howitworks"); fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(path.join(dir, "scenario-prompt.md"), sp);
-      console.log(`ANTHROPIC_API_KEY is not set. Wrote ${path.join(dir, "scenario-prompt.md")} (about ${Math.round(sp.length / 4).toLocaleString()} tokens).`);
-      console.log(`Give it to Claude, save the JSON reply as scenario.json, then run:`);
-      console.log(`  npx howitworks-cli render ${a.repo || "."} --spec ${a.spec} --scenario scenario.json --open`);
-      return;
-    }
-    await addScenario(spec, root, a, key);
+    await addScenario(spec, root, a);
     writeOutputs(spec, root, a);
     fs.writeFileSync(a.spec, JSON.stringify(spec, null, 1));
     return console.log(`  ${a.spec} (updated with the simulator)`);
@@ -163,27 +175,26 @@ async function main() {
   }
 
   const prompt = buildPrompt(root, map);
-  if (a.cmd === "scan" || !key) {
+  if (a.cmd === "scan") {
     const dir = path.join(a.out, ".howitworks"); fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "prompt.md"), prompt);
     fs.writeFileSync(path.join(dir, "facts.md"), mapMarkdown(map));
     fs.writeFileSync(path.join(dir, "schema.md"), SCHEMA + "\n\n" + RULES + "\n\n# Live simulator\n\nAdd a \"scenario\" key to the same JSON:\n\n" + SCENARIO_SCHEMA + "\n\n" + SCENARIO_RULES.replace(/\nReturn only[^\n]*$/, "") + "\n");
-    const why = a.cmd === "scan" ? "" : "ANTHROPIC_API_KEY is not set, so nothing was generated.\n";
-    console.log(`\n${why}Wrote ${path.join(dir, "prompt.md")} (about ${Math.round(prompt.length / 4).toLocaleString()} tokens).`);
-    console.log(`Next: give it to Claude (Claude Code, claude.ai), save the JSON reply as architecture.json, then run:`);
-    console.log(`  npx howitworks-cli render ${a.repo || "."} --spec architecture.json --open`);
-    if (!key && a.cmd !== "scan") console.log(`Or set ANTHROPIC_API_KEY and run again to do it in one step.`);
+    console.log(`\nWrote ${path.join(dir, "prompt.md")} (about ${Math.round(prompt.length / 4).toLocaleString()} tokens).`);
+    console.log(`To finish without Claude Code: paste it into Claude, save the JSON reply as architecture.json, then run:`);
+    console.log(`  howitworks render ${a.repo || "."} --spec architecture.json --open`);
     return;
   }
 
-  console.log(`Asking ${a.model} to describe ${name} (about ${Math.round(prompt.length / 4).toLocaleString()} tokens of context) ...`);
+  requireClaudeCode();
+  const f = taskFile(root, "prompt.md", prompt);
   let spec;
-  try { spec = parseSpec(await callClaude(prompt, { model: a.model, apiKey: key })); }
+  try { spec = parseSpec(await askClaude(f, root, a, `Describing ${name}`)); }
   catch (e) { fail(e.message); }
   spec.name = a.name || spec.name || name;
   fs.mkdirSync(a.out, { recursive: true });
   const specFile = path.join(a.out, "architecture.json");
-  if (a.sim) { validate(spec, root); await addScenario(spec, root, a, key); }
+  if (a.sim) { validate(spec, root); await addScenario(spec, root, a); }
   writeOutputs(spec, root, a);
   fs.writeFileSync(specFile, JSON.stringify(spec, null, 1));
   console.log(`  ${specFile}`);

@@ -57,9 +57,9 @@ The page contains:
 
 - **Node.js 18 or newer** (`node --version`). No other dependencies.
 - **git**, only if you pass a Git URL instead of a local folder.
-- **One of:**
-  - Claude Code or the Claude app, to use it as a skill (no API key needed), or
-  - an Anthropic API key, to run the command line tool end to end on its own.
+- **Claude**, through either:
+  - [Claude Code](https://code.claude.com/docs/en/setup), installed and logged in. The skill runs inside it, and the command line tool uses it (the `claude` command) to read the code and write the description. There is no API key to set up: it uses your existing Claude login.
+  - the Claude app, to use it as a skill there.
 
 ---
 
@@ -133,15 +133,16 @@ Once the package is published to npm (see [Publishing](#publishing)), this becom
 /howitworks
 ```
 
-**From the command line**, with an API key:
+**From the command line**, with Claude Code installed and logged in:
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...
 cd /path/to/your/repo
 howitworks . --open
 ```
 
-**Try it with no key and no setup**, using an included example:
+The tool runs Claude Code in headless mode with read-only access to the repo (it can read and search files, nothing else) and shows each file Claude opens as it goes.
+
+**Try it with no setup**, using an included example:
 
 ```bash
 git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git
@@ -185,12 +186,12 @@ What the skill does, in order:
 
 ### Commands
 
-| Command | What it does | Needs API key |
+| Command | What it does | Uses Claude Code |
 |---|---|---|
 | `howitworks [repo]` | Full run: scan, describe, write the simulator, check, render | Yes |
-| `howitworks scan [repo]` | Write `.howitworks/prompt.md`, `facts.md` and `schema.md` for any Claude to use | No |
+| `howitworks scan [repo]` | Write `.howitworks/prompt.md`, `facts.md` and `schema.md` to paste into any Claude | No |
 | `howitworks render [repo] --spec FILE [--scenario FILE]` | Check a description and draw the page | No |
-| `howitworks simulate [repo] --spec FILE` | Add a live simulator to an existing description | Yes, or writes a prompt |
+| `howitworks simulate [repo] --spec FILE` | Add a live simulator to an existing description | Yes |
 | `howitworks map [repo]` | Write `REPO_MAP.md`: structure only, no Claude | No |
 
 `[repo]` is a local folder (default: the current folder) or a Git URL.
@@ -203,7 +204,7 @@ What the skill does, in order:
 | `--spec FILE` | The description to render, instead of generating one. |
 | `--scenario FILE` | A live simulator to merge into the description when rendering. |
 | `--name NAME` | Display name for the page. Default: the folder or repo name. |
-| `--model ID` | Claude model. Default: `claude-opus-5-5`, or the `HOWITWORKS_MODEL` environment variable. |
+| `--model NAME` | Model for Claude Code to use, such as `opus` or `sonnet`. Default: your Claude Code default. |
 | `--no-sim` | Skip generating the live simulator. |
 | `--open` | Open the page in your browser when done. |
 | `--bare` | Write the page body only, for hosts that add their own `<html>` shell. |
@@ -222,12 +223,12 @@ howitworks https://github.com/pallets/flask.git -o docs --open
 howitworks . --no-sim
 
 # Use a different model
-howitworks . --model claude-sonnet-5-5
+howitworks . --model sonnet
 ```
 
-### Without an API key
+### Without Claude Code
 
-Use any Claude (Claude Code, the Claude app) to do the writing, and the CLI for everything else:
+Paste the prompt into any Claude (the Claude app, claude.ai) to do the writing, and use the CLI for everything else:
 
 ```bash
 # 1. Write the prompt
@@ -294,7 +295,7 @@ The page works in light and dark mode, on desktop and phone, and needs no server
 4. **Check** (no AI). Validates every file path, connection and step, and plays every simulator combination.
 5. **Render** (no AI). Writes a single self-contained HTML page and the Markdown version.
 
-In the skill, Claude does steps 2 and 3 directly, and can open as many files as it needs. On the command line, steps 2 and 3 are calls to the Claude API.
+In the skill, Claude does steps 2 and 3 directly. On the command line, the tool hands steps 2 and 3 to Claude Code in headless mode (`claude -p`), limited to reading and searching files in the repo. Either way, Claude can open as many files as it needs.
 
 ---
 
@@ -416,12 +417,13 @@ howitworks:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   script:
     - apt-get update -qq && apt-get install -yqq git > /dev/null
+    - npm install -g @anthropic-ai/claude-code
     - npx github:koppulapr2230/howitworks . -o docs/architecture
     - git add docs/architecture
     - git diff --cached --quiet || (git -c user.name="howitworks" -c user.email="ci@example.com" commit -m "Update architecture diagram" && git push "https://oauth2:${HOWITWORKS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" HEAD:$CI_DEFAULT_BRANCH)
 ```
 
-Set `ANTHROPIC_API_KEY` and `HOWITWORKS_TOKEN` (a project access token with write access) as masked CI/CD variables.
+Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access.
 
 To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, for example: *Read docs/architecture/ARCHITECTURE.md before exploring the code.*
 
@@ -435,7 +437,8 @@ To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, 
 | `/reload-skills` is not available | Your Claude Code is older than v2.1.152. Run `claude update`, or restart the session. |
 | The skill is installed but missing in a cloud or Cowork session | Skills in `~/.claude/skills` load only in Claude Code on that machine. Upload the ZIP in the Claude app instead. |
 | `No imports between source files were found` | The repo is not in a supported language, or the scan skipped everything as tests, examples or vendored code. |
-| `Claude API error 401` | Check `ANTHROPIC_API_KEY`. |
+| `Claude Code is not installed` | Install it from [code.claude.com](https://code.claude.com/docs/en/setup) and run `claude` once to log in. Or use `scan` and `render` without it. |
+| `Claude Code: ... login` or `Not logged in` | Run `claude` in a terminal and log in, then try again. |
 | `git clone failed` | Check the URL and your access, or clone the repo yourself and pass the folder. |
 | Lines starting with `warning:` | Each names something to fix in `architecture.json`: a missing file, an unknown component, or a simulator combination that does not finish. |
 | A component description is wrong | Edit `architecture.json` and run `render` again. |
@@ -466,7 +469,7 @@ howitworks/
     │       ├── scan.mjs          file discovery and import resolution per language
     │       ├── analyze.mjs       import graph, cycles, packages
     │       ├── facts.mjs         README, doc comments, entry points, routes, dependencies
-    │       └── arch.mjs          prompts, Claude API, validation, Markdown and HTML output
+    │       └── arch.mjs          prompts, Claude Code runner, validation, Markdown and HTML output
     ├── templates/
     │   └── architecture.html     the interactive page
     └── examples/                 OkHttp, Kafka and PetClinic descriptions

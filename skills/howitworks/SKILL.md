@@ -71,4 +71,4 @@ Fix every `warning:` line (unknown files, edges or steps) in the JSON and render
 ## Other commands
 
 - `node SKILL_DIR/scripts/cli.mjs map <repo>` writes `REPO_MAP.md`, the structural facts only.
-- With `ANTHROPIC_API_KEY` set, `node SKILL_DIR/scripts/cli.mjs <repo>` generates the description and the simulator through the Claude API without an agent. It reads fewer files than you can, so prefer the steps above when you are available.
+- `node SKILL_DIR/scripts/cli.mjs <repo>` runs the whole pipeline from a terminal by calling Claude Code headless (`claude -p`). When you are already running, follow the steps above instead of calling it.

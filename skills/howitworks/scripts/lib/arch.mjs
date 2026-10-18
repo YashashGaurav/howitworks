@@ -2,6 +2,7 @@
 // Markdown and HTML output.
 import fs from "node:fs";
 import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { read } from "./scan.mjs";
 import { mapMarkdown } from "./facts.mjs";
@@ -74,15 +75,53 @@ ${ex.join("\n\n")}
 `;
 }
 
-export async function callClaude(prompt, { model, apiKey, maxTokens = 16000 }) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": apiKey, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: "user", content: prompt }] }),
+/** True when the Claude Code CLI ("claude") is installed. */
+export function claudeCodeAvailable() {
+  try { return spawnSync("claude", ["--version"], { encoding: "utf8" }).status === 0; } catch { return false; }
+}
+
+/**
+ * Run a task with the local Claude Code CLI in headless mode, using the
+ * user's existing Claude login. Claude gets read-only tools (Read, Grep,
+ * Glob) inside the repo, so it can open any file it needs but change nothing.
+ * The task text is written to a file inside the repo and Claude reads it.
+ */
+export function runClaudeCode(taskFile, cwd, { model, log = () => {} } = {}) {
+  const rel = path.relative(cwd, taskFile).split(path.sep).join("/");
+  const instruction = `Read ${rel} and do exactly what it asks. It describes this repository, which is your working directory. ` +
+    `Open any other files you need to understand the code and confirm details before writing. ` +
+    `When you are done, reply with only the JSON object it asks for: no prose, no code fences.`;
+  const args = ["-p", instruction, "--output-format", "stream-json", "--verbose", "--allowedTools", "Read,Grep,Glob"];
+  if (model) args.push("--model", model);
+  return new Promise((resolve, reject) => {
+    const child = spawn("claude", args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let buf = "", result = null, stderr = "", reads = 0;
+    child.stdout.on("data", chunk => {
+      buf += chunk;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+        if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch { continue; }
+        if (ev.type === "assistant" && ev.message && Array.isArray(ev.message.content)) {
+          for (const b of ev.message.content) {
+            if (b.type !== "tool_use" || !["Read", "Grep", "Glob"].includes(b.name)) continue;
+            const inp = b.input || {};
+            const what = inp.file_path ? path.relative(cwd, inp.file_path) || inp.file_path : inp.pattern || "";
+            if (b.name === "Read") reads++;
+            log(`  ${b.name.toLowerCase().padEnd(5)} ${what}`);
+          }
+        } else if (ev.type === "result") result = ev;
+      }
+    });
+    child.stderr.on("data", d => (stderr += d));
+    child.on("error", e => reject(new Error(`could not start Claude Code: ${e.message}`)));
+    child.on("close", code => {
+      if (!result) return reject(new Error(`Claude Code exited with code ${code}${stderr ? `: ${stderr.trim().slice(0, 400)}` : ""}`));
+      if (result.is_error || result.subtype !== "success") return reject(new Error(`Claude Code: ${String(result.result || result.subtype).slice(0, 400)}`));
+      resolve({ text: String(result.result || ""), reads, seconds: Math.round((result.duration_ms || 0) / 1000) });
+    });
   });
-  if (!res.ok) throw new Error(`Claude API error ${res.status}: ${(await res.text()).slice(0, 500)}`);
-  const data = await res.json();
-  return (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
 }
 
 export function parseSpec(text) {
