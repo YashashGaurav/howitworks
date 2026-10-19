@@ -70,6 +70,8 @@ node SKILL_DIR/scripts/cli.mjs render <repo> --spec <repo>/.howitworks/architect
 
 Fix every `warning:` line (unknown files, edges or steps) in the JSON and render again. Then tell the user what the diagram covers, which walkthroughs it has, and anything you could not confirm.
 
+`ARCHITECTURE.md` includes a Mermaid diagram that GitHub and GitLab draw automatically, and file names link to the code (worked out from the repo's git remote; `--links TEMPLATE` for other hosts, `--no-links` to turn off). If the user wants AI assistants to use the result, add `--agents`: it adds one line to the repo's `CLAUDE.md` and/or `AGENTS.md` pointing at `ARCHITECTURE.md`. Ask before using it on a repo that isn't the user's.
+
 ## Other commands
 
 - `node SKILL_DIR/scripts/cli.mjs map <repo>` writes `REPO_MAP.md`, the structural facts only.

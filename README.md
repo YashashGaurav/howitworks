@@ -60,12 +60,12 @@ Every run produces three files:
 | File | What it is |
 |---|---|
 | `architecture.html` | The interactive page. One self-contained file: open it in any browser, share it, or host it. |
-| `ARCHITECTURE.md` | The same explanation as text. Commit it next to your README and point your AI assistant at it. |
+| `ARCHITECTURE.md` | The same explanation as text, with a diagram GitHub and GitLab draw automatically (Mermaid). Commit it next to your README and point your AI assistant at it (`--agents` does that for you). |
 | `architecture.json` | The description the page is drawn from. Edit it and re-render at any time. |
 
 The page contains:
 
-- **A layered diagram** of a dozen to a few dozen components, from the callers at the top to storage and I/O at the bottom. Click any box to see what it does, which files it lives in, and what it talks to.
+- **A layered diagram** of a dozen to a few dozen components, from the callers at the top to storage and I/O at the bottom. Click any box to see what it does, which files it lives in (each one a link to the code on GitHub, GitLab or Bitbucket), and what it talks to.
 - **Guided tours** of the 2 to 4 most important paths, such as "Send a request" or "Create a topic", with each step numbered on the diagram.
 - **A live simulator.** Choose how a call should go (cache hit or miss, validation error, retry, leader moved, and so on), press **Send**, and watch it travel through the diagram while each step is narrated, the payload in flight is shown, and an event log fills in with real function names from the code.
 - **Where to make a change**: common tasks mapped to the components you would edit.
@@ -241,6 +241,9 @@ What the skill does, in order:
 | `--no-sim` | Skip generating the live simulator. |
 | `--open` | Open the page in your browser when done. |
 | `--bare` | Write the page body only, for hosts that add their own `<html>` shell. |
+| `--agents` | Add one line to the repo's `CLAUDE.md` and/or `AGENTS.md` telling AI assistants to read `ARCHITECTURE.md`. Updates whichever exist (creates `CLAUDE.md` if neither does); running it again changes nothing. |
+| `--links TEMPLATE` | Link file names to your code host, with `{path}` for the file, e.g. `https://git.example.com/org/repo/blob/main/{path}`. Default: worked out from the repo's git remote for GitHub, GitLab and Bitbucket, pointing at the current commit once it's pushed. |
+| `--no-links` | Don't link file names. |
 | `-h, --help` | Show help. |
 
 ### Examples
@@ -299,7 +302,7 @@ Each problem is printed as a line starting with `warning:`. A clean description 
 | Area | What you can do |
 |---|---|
 | **Send a call** bar | Pick options, edit the input (for example a URL or a topic and key), choose a speed, press **Send call**. Changing any option sends a new call. |
-| **Diagram** | Click a box for its description, files, connections and related tasks. Arrows light up as a call travels: blue going in, green for responses, red for failures. |
+| **Diagram** | Click a box for its description, files (linked to the code), connections and related tasks. Arrows light up as a call travels: blue going in, green for responses, red for failures. |
 | **Live call** panel | The current step and what happens there, the payload at that point, and the event log with simulated timing. |
 | **Guided tours** | Numbered walkthroughs of the main paths. Step through them with Next and Previous. |
 | **Where to make a change** | Common engineering tasks, each linked to the components involved. |
@@ -456,7 +459,7 @@ howitworks:
 
 Claude Code needs a login on the runner: run `claude setup-token` on your machine and save the token as a masked CI/CD variable named `CLAUDE_CODE_OAUTH_TOKEN`. Also add `HOWITWORKS_TOKEN`, a project access token with write access. The job pins a version (`howitworks-cli@0.3.4`) so it only runs a release you chose; update it when you upgrade.
 
-To have AI assistants use the result, add a line to `CLAUDE.md` or `AGENTS.md`, for example: *Read docs/architecture/ARCHITECTURE.md before exploring the code.*
+To have AI assistants use the result, add `--agents`: it adds one line to the repo's `CLAUDE.md` and/or `AGENTS.md` pointing at `ARCHITECTURE.md`, and leaves the rest of the file alone.
 
 ---
 

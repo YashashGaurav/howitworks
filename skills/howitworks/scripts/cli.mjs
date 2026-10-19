@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { buildGraph, safeWrite } from "./lib/scan.mjs";
+import { detectLinks, checkTemplate, fileUrl, pointAgents } from "./lib/extras.mjs";
 import { analyze } from "./lib/analyze.mjs";
 import { buildMap, mapMarkdown } from "./lib/facts.mjs";
 import { buildPrompt, claudeCodeAvailable, runClaudeCode, parseSpec, validate, archMarkdown, renderHtml, SCHEMA, RULES,
@@ -33,6 +34,10 @@ Options
   --name NAME        Display name
   --open             Open the diagram in your browser when done
   --bare             HTML body only, for hosts that add the <html> shell
+  --agents           Add a line to the repo's CLAUDE.md / AGENTS.md telling AI assistants to read ARCHITECTURE.md
+  --links TEMPLATE   Link file names to your code host, e.g. https://git.example.com/org/repo/blob/main/{path}
+                     (default: worked out from the repo's git remote for GitHub, GitLab and Bitbucket)
+  --no-links         Don't link file names
   -h, --help         Show this help
 
 Requires Claude Code (the "claude" command) installed and logged in, for the commands that use Claude.
@@ -45,7 +50,7 @@ Output
 Languages: Python, Java, Kotlin, Scala, TypeScript, JavaScript, C, C++.`;
 
 function parseArgs(argv) {
-  const a = { cmd: "diagram", repo: null, out: ".", spec: null, scenario: null, sim: true, name: null, model: null, open: false, bare: false };
+  const a = { cmd: "diagram", repo: null, out: ".", spec: null, scenario: null, sim: true, name: null, model: null, open: false, bare: false, links: undefined, agents: false };
   const rest = [...argv];
   if (["scan", "render", "map", "diagram", "simulate"].includes(rest[0])) a.cmd = rest.shift();
   while (rest.length) {
@@ -59,6 +64,9 @@ function parseArgs(argv) {
     else if (t === "--model") a.model = rest.shift();
     else if (t === "--open") a.open = true;
     else if (t === "--bare") a.bare = true;
+    else if (t === "--links") { a.links = rest.shift(); const why = checkTemplate(a.links); if (why) fail(`--links ${why}, e.g. https://git.example.com/team/repo/blob/main/{path}`); }
+    else if (t === "--no-links") a.links = null;
+    else if (t === "--agents") a.agents = true;
     else if (t.startsWith("-")) fail(`Unknown option ${t}. Run with --help.`);
     else if (!a.repo) a.repo = t;
     else fail(`Unexpected argument ${t}.`);
@@ -108,11 +116,22 @@ function writeOutputs(spec, root, a) {
   warns.forEach(w => console.warn(`warning: ${w}`));
   fs.mkdirSync(a.out, { recursive: true });
   const html = path.join(a.out, "architecture.html"), md = path.join(a.out, "ARCHITECTURE.md");
-  write(html, renderHtml(spec, { bare: a.bare }), a.out);
-  write(md, archMarkdown(spec), a.out);
+  // Links from file names to the repo's web host: --links, else the repo's own git remote, unless --no-links.
+  const links = a.links === undefined ? detectLinks(root) : a.links;
+  // In ARCHITECTURE.md, prefer links relative to the file when it sits inside the repo, so they work on any host and branch.
+  const outInRepo = (() => { const r = path.relative(fs.realpathSync(root), fs.realpathSync(a.out)); return r === "" || (!r.startsWith("..") && !path.isAbsolute(r)); })();
+  const mdLink = a.links === null ? null
+    : outInRepo ? f => path.relative(fs.realpathSync(a.out), path.join(fs.realpathSync(root), f)).split(path.sep).join("/")
+    : links ? f => fileUrl(links, f) : null;
+  write(html, renderHtml(spec, { bare: a.bare, links }), a.out);
+  write(md, archMarkdown(spec, { fileLink: mdLink }), a.out);
   const flows = spec.flows.length, sim = spec.scenario ? ", live call simulator" : "";
   console.log(`\n${spec.name}: ${spec.nodes.length} parts, ${flows} walkthrough${flows === 1 ? "" : "s"}${sim}.`);
   console.log(`  ${html}\n  ${md}`);
+  if (a.agents) {
+    if (!outInRepo) console.warn("warning: --agents skipped: the output folder is outside the repo, so CLAUDE.md would point at nothing.");
+    else { try { const changed = pointAgents(root, md); console.log(changed.length ? `  ${changed.join(", ")} (now points AI assistants at ARCHITECTURE.md)` : "  CLAUDE.md/AGENTS.md already point at ARCHITECTURE.md"); } catch (e) { fail(e.message); } }
+  }
   if (a.open) openFile(path.resolve(html));
 }
 

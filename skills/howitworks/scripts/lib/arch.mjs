@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { read, insideRepo } from "./scan.mjs";
+import { mermaidDiagram, checkTemplate, fileUrl } from "./extras.mjs";
 import { mapMarkdown } from "./facts.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -181,13 +182,18 @@ export function validate(spec, root) {
   return warns;
 }
 
-export function archMarkdown(spec) {
+/**
+ * ARCHITECTURE.md. fileLink(rel) may return a URL or relative path for a repo file, or null for plain text.
+ */
+export function archMarkdown(spec, { fileLink = null } = {}) {
   const by = new Map(spec.nodes.map(n => [n.id, n]));
   const L = [`# How ${spec.name} works`, "", spec.summary || "", ""];
+  if (spec.nodes.length) L.push("```mermaid", mermaidDiagram(spec), "```", "");
+  const fileRef = f => { const u = fileLink && fileLink(f); return u ? `[\`${f}\`](${u.replace(/[()\s]/g, c => encodeURIComponent(c))})` : "`" + f + "`"; };
   for (const g of spec.groups) {
     const ms = spec.nodes.filter(n => n.group === g.id); if (!ms.length) continue;
     L.push(`## ${g.label}`); if (g.description) L.push(g.description); L.push("");
-    for (const n of ms) L.push(`- **${n.label}**: ${n.description || ""}` + (n.files?.length ? " Files: " + n.files.map(f => "`" + f + "`").join(", ") + "." : ""));
+    for (const n of ms) L.push(`- **${n.label}**: ${n.description || ""}` + (n.files?.length ? " Files: " + n.files.map(fileRef).join(", ") + "." : ""));
     L.push("");
   }
   if (spec.flows.length) {
@@ -200,9 +206,11 @@ export function archMarkdown(spec) {
   return L.join("\n").replace(/—/g, ", ") + "\n";
 }
 
-export function renderHtml(spec, { bare = false } = {}) {
+export function renderHtml(spec, { bare = false, links = null } = {}) {
   let page = fs.readFileSync(TEMPLATE, "utf8");
-  const data = { ...spec, markdown: archMarkdown(spec) };
+  // File links come only from the caller (the repo's own remote, or --links), never from the description.
+  const template = links && !checkTemplate(links) ? links : null;
+  const data = { ...spec, links: template, markdown: archMarkdown(spec, { fileLink: template ? f => fileUrl(template, f) : null }) };
   // Never ship a regex that could hang the viewer's browser, even if validate() was skipped.
   const pat = spec.scenario && spec.scenario.input && spec.scenario.input.pattern;
   if (pat != null && unsafePattern(pat)) data.scenario = { ...spec.scenario, input: { ...spec.scenario.input, pattern: undefined } };
