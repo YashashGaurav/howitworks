@@ -62,7 +62,7 @@ h1 { font: 760 clamp(30px, 4.6vw, 46px)/1 var(--font-display); font-stretch: 82%
 .flows button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 13.5px; cursor: pointer; }
 .flows button:hover { border-color: var(--ink); }
 .flows button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
-#themeToggle { margin-left: auto; border-radius: 999px; padding: 5px 10px; font-size: 15px; line-height: 1; border: 1px solid var(--line); background: var(--panel); cursor: pointer; flex-shrink: 0; }
+#themeToggle { position: fixed; top: 14px; right: max(16px, env(safe-area-inset-right, 0px)); z-index: 100; border-radius: 999px; padding: 6px 11px; font-size: 15px; line-height: 1; border: 1px solid var(--line); background: var(--panel); cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
 #themeToggle:hover { border-color: var(--ink); }
 
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
@@ -202,12 +202,13 @@ pre.flight { margin: 0; background: var(--log-bg); border: 1px solid var(--line)
 }
 </style>
 
+<button id="themeToggle" type="button" aria-label="Toggle light/dark mode" title="Toggle light/dark mode"></button>
 <div class="wrap">
   <header>
     <div class="eyebrow">How it works</div>
     <h1 id="title"></h1>
     <p class="summary" id="summary"></p>
-    <div class="flows" id="flows" role="group" aria-label="Walkthroughs"><span class="lab">Guided tours:</span><button id="themeToggle" type="button" aria-label="Toggle light/dark mode" title="Toggle light/dark mode"></button></div>
+    <div class="flows" id="flows" role="group" aria-label="Walkthroughs"><span class="lab">Guided tours:</span></div>
   </header>
 
   <section class="sim" id="sim" hidden></section>
