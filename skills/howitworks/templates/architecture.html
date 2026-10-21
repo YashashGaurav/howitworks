@@ -62,6 +62,8 @@ h1 { font: 760 clamp(30px, 4.6vw, 46px)/1 var(--font-display); font-stretch: 82%
 .flows button { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-size: 13.5px; cursor: pointer; }
 .flows button:hover { border-color: var(--ink); }
 .flows button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+#themeToggle { margin-left: auto; border-radius: 999px; padding: 5px 10px; font-size: 15px; line-height: 1; border: 1px solid var(--line); background: var(--panel); cursor: pointer; flex-shrink: 0; }
+#themeToggle:hover { border-color: var(--ink); }
 
 .work { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
 .diagram { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-x: auto; min-width: 0; }
@@ -205,7 +207,7 @@ pre.flight { margin: 0; background: var(--log-bg); border: 1px solid var(--line)
     <div class="eyebrow">How it works</div>
     <h1 id="title"></h1>
     <p class="summary" id="summary"></p>
-    <div class="flows" id="flows" role="group" aria-label="Walkthroughs"><span class="lab">Guided tours:</span></div>
+    <div class="flows" id="flows" role="group" aria-label="Walkthroughs"><span class="lab">Guided tours:</span><button id="themeToggle" type="button" aria-label="Toggle light/dark mode" title="Toggle light/dark mode"></button></div>
   </header>
 
   <section class="sim" id="sim" hidden></section>
@@ -648,5 +650,24 @@ const ARCH = /*__ARCH__*/null;
   } else if (flows.length) showFlow(flows[0].id, 0); else showOverview();
 
   function showLive() { if (window.__showLive) window.__showLive(); }
+})();
+
+/* ---------- Light / dark mode toggle ---------- */
+(function () {
+  const btn = document.getElementById("themeToggle");
+  const root = document.documentElement;
+  const sysDark = () => matchMedia("(prefers-color-scheme: dark)").matches;
+  let dark;
+  try { const s = localStorage.getItem("arch-theme"); dark = s ? s === "dark" : sysDark(); }
+  catch (e) { dark = sysDark(); }
+  const apply = () => {
+    root.dataset.theme = dark ? "dark" : "light";
+    btn.textContent = dark ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    btn.title = dark ? "Switch to light mode" : "Switch to dark mode";
+    try { localStorage.setItem("arch-theme", dark ? "dark" : "light"); } catch (e) {}
+  };
+  apply();
+  btn.addEventListener("click", () => { dark = !dark; apply(); });
 })();
 </script>
